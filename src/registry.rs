@@ -420,7 +420,7 @@ impl ProcessorRegistry {
                 continue;
             };
             if validate_processor_id(&identity).is_ok()
-                && after.map_or(true, |cursor| identity.as_str() > cursor)
+                && (after.is_none() || after.is_some_and(|cursor| identity.as_str() > cursor))
                 && entry.file_type().map_err(io_error)?.is_dir()
             {
                 identities.push(identity);

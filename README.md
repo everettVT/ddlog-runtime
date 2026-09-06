@@ -81,6 +81,9 @@ One registered operation consumes/returns strings, with explicit submission, cla
 
 ## Verification
 
+The [runtime contract](docs/specification.md) maps supported behavior to executable
+tests and distinguishes local checkpoints from unimplemented storage features.
+
 ```sh
 cargo fmt --all --check
 cargo test --locked --workspace
