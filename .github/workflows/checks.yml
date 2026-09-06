@@ -1,0 +1,25 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SHARED_TEST_TIMEOUT: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Formatting and transport-free contracts
+        run: |
+          cargo fmt --all --check
+          cargo test --locked --workspace
+      - name: MCP and controlled worker contracts
+        run: |
+          cargo test --locked --workspace --all-features
+          cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
+          timeout 30s python3 -m unittest discover -s tests -p 'test_bridge_transport.py' -v
+          timeout 120s python3 -m unittest discover -s tests -p 'test_*.py' -v --failfast

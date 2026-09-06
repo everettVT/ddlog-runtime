@@ -1,0 +1,37 @@
+[package]
+name = "ddlog-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Typed incremental program runtime with immutable composition and an optional MCP host"
+license = "MIT"
+repository = "https://github.com/everettVT/ddlog-runtime"
+exclude = ["**/__pycache__/**", "**/*.pyc"]
+
+[workspace]
+members = ["crates/syntax"]
+resolver = "2"
+
+[dependencies]
+lemmalog-syntax = { path = "crates/syntax", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[features]
+default = []
+mcp = []
+
+[[bin]]
+name = "lemmalog-ddlog-mcp"
+required-features = ["mcp"]
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

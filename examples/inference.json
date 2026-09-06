@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "operation": "summarize",
+  "endpoint": "https://example.invalid/infer",
+  "model": "operator-configured-model",
+  "system_prompt": "Summarize the supplied text briefly.",
+  "max_tokens": 1024,
+  "temperature": 0.3,
+  "top_p": 0.9,
+  "reasoning_effort": "high",
+  "reasoning_enabled": true
+}

@@ -1,0 +1,11 @@
+/* Alternating Large-Star / Small-Star, Kiveris et al. (2014).
+ * The implementation is a Differential iteration, not recursive DDlog aggregation.
+ * Vertex IDs are signed 64-bit integers. Edges are undirected; explicit vertices
+ * supplement their endpoints so isolated vertices remain in the result.
+ */
+extern transformer LargeSmallStar(Vertices: relation['N],
+                                 vertex: function(n: 'N): signed<64>,
+                                 Edges: relation['E],
+                                 from: function(e: 'E): signed<64>,
+                                 to: function(e: 'E): signed<64>)
+    -> (Labels: relation[(signed<64>, signed<64>)])

@@ -1,0 +1,187 @@
+{
+  "format_version": 1,
+  "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+  "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1",
+  "content_sha256": "3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1",
+  "created_at_unix_ms": 1788652894773,
+  "git_provenance": null,
+  "lineage": null,
+  "definition": {
+    "composition": {
+      "nodes": {
+        "graph": {
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        }
+      },
+      "inputs": {
+        "edges": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "targets": [
+            {
+              "node": "graph",
+              "relation": "edges"
+            }
+          ]
+        },
+        "vertices": {
+          "fields": [
+            "int"
+          ],
+          "targets": [
+            {
+              "node": "graph",
+              "relation": "vertices"
+            }
+          ]
+        }
+      },
+      "bindings": [],
+      "outputs": {
+        "labels": {
+          "node": "graph",
+          "relation": "labels"
+        }
+      }
+    }
+  },
+  "validation": {
+    "syntax_checked": true,
+    "types_checked": true,
+    "supported_lowering_checked": true,
+    "ddlog_compilation_performed": false
+  },
+  "composition": {
+    "nodes": {
+      "graph": {
+        "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+        "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+      }
+    },
+    "dependencies": {
+      "graph": {
+        "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+        "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+      }
+    },
+    "generated_source_sha256": "051f5bcce29e04035df361ac77a6a65fd54a28f77d01b876f7c877437f5c05db",
+    "inputs": {
+      "edges": "Input_edges",
+      "vertices": "Input_vertices"
+    },
+    "outputs": {
+      "labels": "Output_labels"
+    },
+    "rules": [
+      {
+        "input": "edges",
+        "kind": "input_binding",
+        "owner": null,
+        "scope": "",
+        "to": {
+          "node": "graph",
+          "relation": "edges"
+        }
+      },
+      {
+        "input": "vertices",
+        "kind": "input_binding",
+        "owner": null,
+        "scope": "",
+        "to": {
+          "node": "graph",
+          "relation": "vertices"
+        }
+      },
+      {
+        "from": {
+          "node": "graph",
+          "relation": "labels"
+        },
+        "kind": "output_binding",
+        "output": "labels",
+        "owner": null,
+        "scope": ""
+      }
+    ],
+    "relations": {
+      "Input_edges": {
+        "fields": [
+          "int",
+          "int"
+        ],
+        "input": "edges",
+        "kind": "external_input",
+        "owner": null,
+        "scope": ""
+      },
+      "Input_vertices": {
+        "fields": [
+          "int"
+        ],
+        "input": "vertices",
+        "kind": "external_input",
+        "owner": null,
+        "scope": ""
+      },
+      "Module0_edges": {
+        "kind": "processor_relation",
+        "node": "graph",
+        "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+        "relation": "edges",
+        "schema": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": true
+        },
+        "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+      },
+      "Module0_labels": {
+        "kind": "processor_relation",
+        "node": "graph",
+        "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+        "relation": "labels",
+        "schema": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": false
+        },
+        "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+      },
+      "Module0_vertices": {
+        "kind": "processor_relation",
+        "node": "graph",
+        "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+        "relation": "vertices",
+        "schema": {
+          "fields": [
+            "int"
+          ],
+          "input": true
+        },
+        "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+      },
+      "Output_labels": {
+        "fields": [
+          "int",
+          "int"
+        ],
+        "from": {
+          "node": "graph",
+          "relation": "labels"
+        },
+        "kind": "external_output",
+        "output": "labels",
+        "owner": null,
+        "scope": ""
+      }
+    }
+  }
+}

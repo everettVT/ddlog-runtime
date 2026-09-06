@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "processor_id": "processor_e6952bf74116c7496625b9011b33742d",
+  "version": "sha256:9837a519f04b5ce0182d6492e6d322ef6ad61d79bc1fea857912d02ce9d87c1c",
+  "content_sha256": "9837a519f04b5ce0182d6492e6d322ef6ad61d79bc1fea857912d02ce9d87c1c",
+  "created_at_unix_ms": 1788652894741,
+  "git_provenance": null,
+  "lineage": null,
+  "definition": {
+    "rules": "reviewed(E,R,O) :- agent_result(E,R,O).",
+    "schemas": {
+      "reviewed": {
+        "fields": [
+          "string",
+          "int",
+          "string"
+        ],
+        "input": false
+      }
+    },
+    "operation": {
+      "name": "review",
+      "version": "fixture-v1",
+      "description": "Synthetic review operation"
+    }
+  },
+  "validation": {
+    "syntax_checked": true,
+    "types_checked": true,
+    "supported_lowering_checked": true,
+    "ddlog_compilation_performed": false
+  }
+}

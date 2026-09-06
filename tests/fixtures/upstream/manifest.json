@@ -1,0 +1,23 @@
+{
+  "nested_source_sha256": "9f31f9f34970ec7bf0d4a87a352d50491c632f00811ee7e45b127eebeecfbe2d",
+  "scope": "Captured before extraction using the unchanged upstream server; definition validation and source generation only. Build driver was simulated; no native graph or provider was executed.",
+  "server_sha256": "3920135e89b973ac4b41dd153b60c006244ef51a65cdc9fa2055a1f07d2aba84",
+  "source_commit": "199a6cd87bbc16e5e5f6069bcef80edebd9c8c9f",
+  "source_files_sha256": {
+    "src/ast.rs": "0747cba2ac5d040a62628deefef1512b4c9f0858a1f037ac9e507d2c6cc130d9",
+    "src/ddlog/composition.rs": "83911e9c972117498c91f49b489c190d0056d61380a9525ebf4923e7b01053d0",
+    "src/ddlog/host.rs": "29a4c66028271be807bdb2b95ac9d65ccc695d2e4c0a85901e27a7bebf3db4cb",
+    "src/ddlog/lower.rs": "917fbcd2737b2a5764761d650409e618efedac316beea84f0f5ad63534fba80a",
+    "src/ddlog/mcp.rs": "f1614d83353a1da214afe678c30cfe42fdb678a8124e60b533bd8689441b7e2a",
+    "src/ddlog/mod.rs": "982a071e7edbe503cc8afef91f3c8aa76054f14fb768794c87e683bab86613ac",
+    "src/ddlog/operations.rs": "0431ac85c42ae47f767720b1aa3b806a6374309c416ac3967fa648e949fee49a",
+    "src/ddlog/processes.rs": "831d19c9c7dcadb9549200977ecb5d34830eed464ac3429d10541252342c1ec6",
+    "src/ddlog/registry.rs": "339295423013d4f109ac96960458cd90e98479f7a06a5d9b1cebb0621ca1d9e5",
+    "src/ddlog/star.rs": "5cd7088587428bc7018bd0253c8ce46d6c599feb99388394073572045c91f3e2",
+    "src/ddlog/star/lemmalog_star.dl": "185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb",
+    "src/ddlog/star/lemmalog_star.rs": "b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e",
+    "src/intern.rs": "9189a16e38774beb46327912bbdc8dd66cafa01c9784cea1c24ab198f4d0227a",
+    "src/lib.rs": "7a3f2833ba748aff4656cb395e55a05ddeacc23140f00f73326e9d12f308430a"
+  },
+  "upstream_repository": "https://github.com/everettVT/lemmalog"
+}

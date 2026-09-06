@@ -1,0 +1,14 @@
+{
+  "findings": [[1,1,101,1],[1,1,102,3],[1,2,103,1],[1,2,104,3],[2,1,201,2]],
+  "revisions": [[1,1],[2,1]],
+  "evidence": [[1,1,101,501],[1,1,101,502],[1,1,102,503],[1,2,103,504],[1,2,104,506],[2,1,201,601]],
+  "phases": [
+    {"name":"duplicate", "changes":[{"op":"insert","predicate":"findings","values":[1,1,101,1]}]},
+    {"name":"remove_one_support", "changes":[{"op":"delete","predicate":"evidence","values":[1,1,101,501]}]},
+    {"name":"remove_last_support", "changes":[{"op":"delete","predicate":"evidence","values":[1,1,101,502]}]},
+    {"name":"restore_support", "changes":[{"op":"insert","predicate":"evidence","values":[1,1,101,505]}]},
+    {"name":"advance_revision", "changes":[{"op":"delete","predicate":"revisions","values":[1,1]},{"op":"insert","predicate":"revisions","values":[1,2]}]},
+    {"name":"retract_upstream", "changes":[{"op":"delete","predicate":"findings","values":[1,2,103,1]}]},
+    {"name":"restore_upstream", "changes":[{"op":"insert","predicate":"findings","values":[1,2,103,1]}]}
+  ]
+}

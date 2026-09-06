@@ -1,0 +1,28 @@
+// lemmalog_star.dl sha256:185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb
+// lemmalog_star.rs sha256:b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e
+import lemmalog_star as lemmalog_star
+input relation R_Input_edges(f0: signed<64>, f1: signed<64>)
+input relation R_Input_vertices(f0: signed<64>)
+output relation R_Module0_components(f0: signed<64>, f1: signed<64>)
+output relation R_Module0_edges(f0: signed<64>, f1: signed<64>)
+output relation R_Module0_labels(f0: signed<64>, f1: signed<64>)
+output relation R_Module0_vertices(f0: signed<64>)
+output relation R_Output_labels(f0: signed<64>, f1: signed<64>)
+relation StarResult0[(signed<64>, signed<64>)]
+function star_vertex0(v: R_Module0_vertices): signed<64> { v.f0 }
+function star_from0(e: R_Module0_edges): signed<64> { e.f0 }
+function star_to0(e: R_Module0_edges): signed<64> { e.f1 }
+apply lemmalog_star::LargeSmallStar(R_Module0_vertices, star_vertex0, R_Module0_edges, star_from0, star_to0) -> (StarResult0)
+R_Module0_components(v, label) :- StarResult0[(v, label)].
+output relation Evidence0(v_C: signed<64>, v_V: signed<64>)
+Evidence0(v_C, v_V) :- R_Module0_components(v_V, v_C).
+R_Module0_labels(v_V, v_C) :- Evidence0(v_C, v_V).
+output relation Evidence1(v_X0: signed<64>, v_X1: signed<64>)
+Evidence1(v_X0, v_X1) :- R_Input_edges(v_X0, v_X1).
+R_Module0_edges(v_X0, v_X1) :- Evidence1(v_X0, v_X1).
+output relation Evidence2(v_X0: signed<64>)
+Evidence2(v_X0) :- R_Input_vertices(v_X0).
+R_Module0_vertices(v_X0) :- Evidence2(v_X0).
+output relation Evidence3(v_X0: signed<64>, v_X1: signed<64>)
+Evidence3(v_X0, v_X1) :- R_Module0_labels(v_X0, v_X1).
+R_Output_labels(v_X0, v_X1) :- Evidence3(v_X0, v_X1).
