@@ -43,6 +43,8 @@ fn main() -> Result<(), String> {
 
 `Backend` is the lower-level compilation/execution interface. `Backend::install_composition(&registry, &manifest)` validates exact registry pins and typed bindings, then installs the composition and returns its `CompositionResolution` with generated input/output relation names. Use `ProgramInstance` for public-interface enforcement or registered operations. Existing MCP queries and deltas contain DDlog row text; library callers can use `Backend::query_typed` and `export_inputs` for typed rows. `why` returns direct rule-variable witnesses, not recursive proof trees or confidence/provenance.
 
+For large maintained outputs, use `Backend::query_typed_bounded` with exact positional filters, row/JSON-byte limits and an explicit continuation. It streams only the selected relation and drains its native dump with bounded host accumulation. `apply_without_deltas` acknowledges mutations without transporting unrelated derived changes. See [bounded output reads](docs/bounded-reads.md) for limits and scan costs.
+
 Library callers can explicitly save and restore pure-program local checkpoints. See [checkpoint contracts](docs/checkpoints.md). Compatible output-schema changes recompile and replay retained inputs; input schemas stay fixed when data is retained.
 
 A runnable library example is [`examples/program.rs`](examples/program.rs). Installation invokes native compilation; pure parsing, lowering and registry validation do not. The workspace does not require the MCP feature for library use.

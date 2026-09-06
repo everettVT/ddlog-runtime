@@ -6,7 +6,11 @@
 pub use lemmalog_syntax as syntax;
 pub mod instance;
 pub use instance::ProgramInstance;
+mod bounded;
 mod checkpoint;
+pub use bounded::{
+    BoundedQuery, QueryCursor, QueryPage, MAX_NATIVE_RECORD_BYTES, MAX_QUERY_BYTES, MAX_QUERY_ROWS,
+};
 pub mod composition;
 #[cfg(all(feature = "mcp", unix))]
 pub mod host;
@@ -34,6 +38,7 @@ struct Runtime {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     sequence: u64,
+    identity: String,
     group: processes::Group,
 }
 impl Runtime {
@@ -51,6 +56,7 @@ impl Runtime {
             output: BufReader::new(child.stdout.take().unwrap()),
             child,
             sequence: 0,
+            identity: bounded::owner_identity(),
             group,
         })
     }
@@ -80,6 +86,59 @@ impl Runtime {
                 return Ok(result);
             }
             result.push_str(&line);
+        }
+    }
+
+    /// Read one record at a time and always drain the response to its marker.
+    /// Consumer/record errors do not desynchronize the live owner. I/O errors
+    /// still fail the exchange because the command boundary is then uncertain.
+    fn exchange_stream(
+        &mut self,
+        commands: &str,
+        mut consume: impl FnMut(Result<&str>),
+    ) -> Result<()> {
+        self.sequence += 1;
+        let marker = format!("LEMMALOG_END_{}", self.sequence);
+        writeln!(self.input, "{commands}\necho {marker};")
+            .and_then(|_| self.input.flush())
+            .map_err(|e| e.to_string())?;
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            let read = self
+                .output
+                .by_ref()
+                .take((MAX_NATIVE_RECORD_BYTES + 1) as u64)
+                .read_until(b'\n', &mut line)
+                .map_err(|e| e.to_string())?;
+            if read == 0 {
+                return Err("DDlog exited before completing the request".into());
+            }
+            if line.len() > MAX_NATIVE_RECORD_BYTES {
+                if !line.ends_with(b"\n") {
+                    loop {
+                        let bytes = self.output.fill_buf().map_err(|e| e.to_string())?;
+                        if bytes.is_empty() {
+                            return Err("DDlog exited before completing the request".into());
+                        }
+                        let end = bytes.iter().position(|byte| *byte == b'\n');
+                        let length = end.map_or(bytes.len(), |end| end + 1);
+                        self.output.consume(length);
+                        if end.is_some() {
+                            break;
+                        }
+                    }
+                }
+                consume(Err(format!(
+                    "DDlog record exceeded {MAX_NATIVE_RECORD_BYTES} bytes; bounded query rejected"
+                )));
+                continue;
+            }
+            match std::str::from_utf8(&line) {
+                Ok(text) if text.trim() == marker => return Ok(()),
+                Ok(text) => consume(Ok(text)),
+                Err(error) => consume(Err(format!("Invalid UTF-8 in DDlog record: {error}"))),
+            }
         }
     }
 }
@@ -262,6 +321,15 @@ impl Backend {
         Ok(format!("R_{predicate}({})", rendered.join(", ")))
     }
     pub fn apply(&mut self, changes: &Value) -> Result<Value> {
+        self.apply_inner(changes, true)
+    }
+    /// Commit inputs without transporting output deltas. Input acknowledgement,
+    /// revision advancement and checkpoint semantics are identical to `apply`.
+    /// Use this when the caller will read selected outputs separately.
+    pub fn apply_without_deltas(&mut self, changes: &Value) -> Result<Value> {
+        self.apply_inner(changes, false)
+    }
+    fn apply_inner(&mut self, changes: &Value, dump_deltas: bool) -> Result<Value> {
         if self.runtime.is_none() {
             return Err("Install a program first".into());
         }
@@ -288,12 +356,32 @@ impl Backend {
         for (_, fact) in staged.keys().filter(|key| !self.facts.contains_key(*key)) {
             commands.push_str(&format!("insert {fact};\n"));
         }
-        commands.push_str("commit dump_changes;");
-        match self.runtime.as_mut().unwrap().exchange(&commands) {
+        commands.push_str(if dump_deltas {
+            "commit dump_changes;"
+        } else {
+            "commit;"
+        });
+        let response = self
+            .runtime
+            .as_mut()
+            .unwrap()
+            .exchange(&commands)
+            .and_then(|response| {
+                if !dump_deltas && !response.trim().is_empty() {
+                    Err(format!("DDlog rejected transaction: {response}"))
+                } else {
+                    Ok(response)
+                }
+            });
+        match response {
             Ok(delta) => {
                 self.facts = staged;
                 self.revision = revision;
-                Ok(json!({"version":self.version,"deltas":delta}))
+                Ok(if dump_deltas {
+                    json!({"version":self.version,"deltas":delta})
+                } else {
+                    json!({"version":self.version,"revision":self.revision})
+                })
             }
             Err(error) => {
                 self.runtime = None;
