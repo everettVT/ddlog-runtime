@@ -6,6 +6,7 @@
 pub use lemmalog_syntax as syntax;
 pub mod instance;
 pub use instance::ProgramInstance;
+mod checkpoint;
 pub mod composition;
 #[cfg(all(feature = "mcp", unix))]
 pub mod host;
@@ -15,12 +16,13 @@ pub mod mcp;
 mod operations;
 mod processes;
 pub mod registry;
+pub mod rows;
 pub mod star;
 pub use lower::{lower, lower_with_operators, Schema};
 pub use operations::{AgentProgram, Operation};
 
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -97,8 +99,9 @@ pub struct Backend {
     driver: PathBuf,
     runtime: Option<Runtime>,
     schema: BTreeMap<String, Schema>,
-    facts: BTreeSet<(String, String)>,
+    facts: BTreeMap<(String, String), Vec<Value>>,
     version: u64,
+    revision: u64,
     attempt: u64,
     active_source: String,
     failed: bool,
@@ -111,8 +114,9 @@ impl Backend {
             driver,
             runtime: None,
             schema: BTreeMap::new(),
-            facts: BTreeSet::new(),
+            facts: BTreeMap::new(),
             version: 0,
+            revision: 0,
             attempt: 0,
             active_source: String::new(),
             failed: false,
@@ -127,6 +131,16 @@ impl Backend {
         } else {
             "uninitialized"
         }
+    }
+    /// Revision of the last acknowledged input transaction or program replacement.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub fn program_source(&self) -> &str {
+        &self.active_source
+    }
+    pub fn schemas(&self) -> &BTreeMap<String, Schema> {
+        &self.schema
     }
     pub fn install(&mut self, rules: &str, schemas: Value) -> Result<Value> {
         self.install_with_operators(rules, schemas, &[])
@@ -147,9 +161,23 @@ impl Backend {
         source: String,
         schema: BTreeMap<String, Schema>,
     ) -> Result<Value> {
-        if !self.facts.is_empty() && schema != self.schema {
-            return Err("Cannot change schemas with retained facts; start a new session".into());
+        if !self.facts.is_empty()
+            && self
+                .schema
+                .iter()
+                .filter(|(_, s)| s.input)
+                .any(|(name, old)| schema.get(name) != Some(old))
+        {
+            return Err(
+                "Cannot change or remove input schemas with retained facts; start a new session"
+                    .into(),
+            );
         }
+        let revision = self.revision.checked_add(1).ok_or("Revision exhausted")?;
+        let version = self
+            .version
+            .checked_add(1)
+            .ok_or("Program version exhausted")?;
         self.attempt += 1;
         let dir = self.root.join(format!("build-{}", self.attempt));
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -179,16 +207,22 @@ impl Backend {
         }
         let mut runtime = Runtime::start(&binary, &self.control)?;
         let mut replay = String::from("start;\n");
-        for (_, fact) in &self.facts {
+        for (_, fact) in self.facts.keys() {
             replay.push_str(&format!("insert {fact};\n"));
         }
         replay.push_str("commit;");
-        runtime.exchange(&replay)?;
+        let response = runtime.exchange(&replay)?;
+        if !response.trim().is_empty() {
+            return Err(format!(
+                "DDlog rejected candidate replay; previous version retained: {response}"
+            ));
+        }
         self.runtime = Some(runtime);
         self.failed = false;
         self.schema = schema;
         self.active_source = source;
-        self.version += 1;
+        self.version = version;
+        self.revision = revision;
         Ok(
             json!({"backend":"ddlog/differential-dataflow", "version":self.version, "replayed_facts":self.facts.len()}),
         )
@@ -218,6 +252,7 @@ impl Backend {
         if self.runtime.is_none() {
             return Err("Install a program first".into());
         }
+        let revision = self.revision.checked_add(1).ok_or("Revision exhausted")?;
         let mut staged = self.facts.clone();
         for change in changes.as_array().ok_or("Expected changes array")? {
             let pred = change["predicate"].as_str().ok_or("Missing predicate")?;
@@ -225,7 +260,7 @@ impl Backend {
             let fact = self.fact(pred, values)?;
             match change["op"].as_str() {
                 Some("insert") => {
-                    staged.insert((pred.to_string(), fact));
+                    staged.insert((pred.to_string(), fact), values.clone());
                 }
                 Some("delete") => {
                     staged.remove(&(pred.to_string(), fact));
@@ -234,16 +269,17 @@ impl Backend {
             }
         }
         let mut commands = String::from("start;\n");
-        for (_, fact) in self.facts.difference(&staged) {
+        for (_, fact) in self.facts.keys().filter(|key| !staged.contains_key(*key)) {
             commands.push_str(&format!("delete {fact};\n"));
         }
-        for (_, fact) in staged.difference(&self.facts) {
+        for (_, fact) in staged.keys().filter(|key| !self.facts.contains_key(*key)) {
             commands.push_str(&format!("insert {fact};\n"));
         }
         commands.push_str("commit dump_changes;");
         match self.runtime.as_mut().unwrap().exchange(&commands) {
             Ok(delta) => {
                 self.facts = staged;
+                self.revision = revision;
                 Ok(json!({"version":self.version,"deltas":delta}))
             }
             Err(error) => {
@@ -281,6 +317,40 @@ impl Backend {
         }
         let rows = self.read_runtime(&format!("dump R_{predicate};"))?;
         Ok(json!({"version":self.version,"rows":rows}))
+    }
+    /// Decode one native output snapshot using its declared field types.
+    pub fn query_typed(&mut self, predicate: &str) -> Result<Vec<Vec<Value>>> {
+        let schema = self
+            .schema
+            .get(predicate)
+            .ok_or("Unknown relation")?
+            .clone();
+        let result = self.query(predicate)?;
+        rows::decode_rows(
+            result["rows"].as_str().ok_or("Missing runtime rows")?,
+            predicate,
+            &schema.fields,
+        )
+    }
+    /// All acknowledged input relations, including declared empty relations.
+    /// A failed graph is excluded because its final transaction may be uncertain.
+    pub fn export_inputs(&self) -> Result<BTreeMap<String, Vec<Vec<Value>>>> {
+        if self.health() != "ready" {
+            return Err("Input export requires a healthy initialized runtime".into());
+        }
+        let mut result: BTreeMap<String, Vec<Vec<Value>>> = self
+            .schema
+            .iter()
+            .filter(|(_, schema)| schema.input)
+            .map(|(name, _)| (name.clone(), Vec::new()))
+            .collect();
+        for ((predicate, _), values) in &self.facts {
+            result
+                .get_mut(predicate)
+                .ok_or("Retained input schema missing")?
+                .push(values.clone());
+        }
+        Ok(result)
     }
     pub fn why(&mut self, rule: usize) -> Result<Value> {
         // Evidence relation names are discovered in the lowered source, preventing command injection.

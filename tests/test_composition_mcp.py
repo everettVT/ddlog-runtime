@@ -71,15 +71,22 @@ class CompositionAdmission(unittest.TestCase):
         invalid = changed()
         invalid['composition']['bindings'].append(invalid['composition']['bindings'][0])
         cases.append((invalid, 'Multiple sources for input second.source'))
-        invalid = changed()
-        invalid['composition']['inputs'] = {}
-        invalid['composition']['bindings'].append({'from': {'node': 'second', 'relation': 'result'}, 'to': {'node': 'first', 'relation': 'source'}})
-        cases.append((invalid, 'Recursive rules'))
         for definition, expected in cases:
             error = self.error('processor_publish', {'processor_id': composition['processor_id'], 'expected_version': composition['version'], 'definition': definition})
             self.assertIn(expected, error)
             self.assertIn("correct", error.lower())
             self.assertEqual(self.client.call('processor_get', {'processor_id': composition['processor_id']})['version'], composition['version'])
+        self.assertEqual(self.client.call('instance_info')['health'], 'uninitialized')
+        self.assertFalse(list(self.root.rglob('program.dl')), 'Saving must not invoke the compiler')
+
+    def test_positive_recursive_composition_is_accepted_without_compiling(self):
+        recursive = json.loads(json.dumps(self.definition))
+        recursive['composition']['inputs'] = {}
+        recursive['composition']['bindings'].append({
+            'from': {'node': 'second', 'relation': 'result'},
+            'to': {'node': 'first', 'relation': 'source'}})
+        record = self.client.call('processor_create', {'definition': recursive})
+        self.assertEqual(record['definition']['composition'], recursive['composition'])
         self.assertEqual(self.client.call('instance_info')['health'], 'uninitialized')
         self.assertFalse(list(self.root.rglob('program.dl')), 'Saving must not invoke the compiler')
 

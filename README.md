@@ -11,7 +11,7 @@ The original Lemmalog agent-memory product remains in its own repository. This r
 | Optional `mcp` feature | Existing stdio server and shared Unix host/bridges |
 | Optional Python worker | External inference through the existing claim/complete protocol |
 
-The source language accepts positive nonrecursive rules, joins, projections and comparisons over explicitly declared `int` and `string` fields. A vetted Large-Star/Small-Star operator performs native iterative connected components. General recursive rule syntax, authored negation, aggregates, arithmetic, clock builtins and inline facts remain unsupported by the runtime, even though the shared parser recognizes them.
+The source language accepts positive recursion, safe stratified negation, joins, projections and comparisons over explicitly declared `int` and `string` fields. Negated variables must be bound by positive atoms. Negative cycles and cycles through native transformers are rejected before compilation. A vetted Large-Star/Small-Star operator performs native iterative connected components. Aggregates, arithmetic, clock builtins and inline facts remain unsupported even though the shared parser recognizes them.
 
 ## Library
 
@@ -41,7 +41,9 @@ fn main() -> Result<(), String> {
 
 `ProgramInstance::execute` takes an operation name and JSON arguments and returns a result or semantic error. It has no JSON-RPC envelope or connection lifetime. MCP delegates to this same admission path, including immutable pins, exported ports and registered request restrictions. A caller owns and drops each independent instance. Give independent backends distinct build directories.
 
-`Backend` is the lower-level compilation/execution interface. Use `ProgramInstance` when registry pins, public interfaces or registered operations matter. Queries and deltas currently contain DDlog row text. `why` returns direct rule-variable witnesses, not recursive proof trees or confidence/provenance.
+`Backend` is the lower-level compilation/execution interface. Use `ProgramInstance` when registry pins, public interfaces or registered operations matter. Existing MCP queries and deltas contain DDlog row text; library callers can use `Backend::query_typed` and `export_inputs` for typed rows. `why` returns direct rule-variable witnesses, not recursive proof trees or confidence/provenance.
+
+Library callers can explicitly save and restore pure-program local checkpoints. See [checkpoint contracts](docs/checkpoints.md). Compatible output-schema changes recompile and replay retained inputs; input schemas stay fixed when data is retained.
 
 A runnable library example is [`examples/program.rs`](examples/program.rs). Installation invokes native compilation; pure parsing, lowering and registry validation do not. The workspace does not require the MCP feature for library use.
 
@@ -71,7 +73,7 @@ Existing binary, tool, server and environment names are deliberately retained. T
 
 ## State and limits
 
-Registry definitions and lifecycle records are durable. Graph inputs, program instances, claims and results are session-local. A reconnect preserves an existing live owner; it does not recover a crashed graph. Compilation is blocking. Host stop cancels local compiler/runtime process groups; per-operation native timeouts and durable recovery are not implemented. Native execution runs with operator privileges.
+Registry definitions and lifecycle records are durable. Graph state remains memory-only until an explicit library checkpoint succeeds. The MCP host does not automatically checkpoint or restore; reconnecting only preserves an existing live owner. Pure programs can restore a checkpoint into a fresh library backend and recompute their outputs. Registered operations and imported native operators cannot use checkpoint format 1. Compilation is blocking. Host stop cancels local compiler/runtime process groups; per-operation native timeouts, WAL replay, and automatic crash recovery are not implemented. Native execution runs with operator privileges.
 
 One registered operation consumes/returns strings, with explicit submission, claim and completion. Providers run outside rule evaluation. Operation-bearing programs cannot participate in composition or contain typed operators. There are no automatic provider retries, background scheduling, leases, or exactly-once guarantees.
 

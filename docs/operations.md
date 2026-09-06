@@ -24,6 +24,6 @@ An installed immutable pin cannot be replaced through any installation entry poi
 
 A public interface restricts ordinary mutations/queries to its exported names and filters private deltas. Witnesses have their own explicit inspection API. Registered `agent_` relations must be mutated through request operations. The lower-level `Backend` does not apply these higher-level instance contracts.
 
-The current language subset rejects general rule recursion, negation, aggregation, arithmetic, clock builtins and inline facts before activation. Schemas use signed 64-bit integers or strings; mixed-value columns are unsupported. Control characters unsupported by the pinned DDlog CLI are rejected. Input schema changes require an empty retained-input session.
+The language supports positive recursion and safe stratified negation. Negative cycles, cycles through native transformers, aggregation, arithmetic, clock builtins and inline facts are rejected before activation. Schemas use signed 64-bit integers or strings; mixed-value columns are unsupported. Control characters unsupported by the pinned DDlog CLI are rejected. Retained inputs require compatible input schemas; derived schemas may change during program replacement.
 
 `why` is not a memory proof tree. Registry content versions, generated source hashes, native implementation hashes, executable hashes and live instance IDs identify different things. Preserve them separately.

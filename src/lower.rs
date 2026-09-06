@@ -2,7 +2,7 @@ use super::star::Operator;
 use lemmalog_syntax::ast::{parse_program, Atom, Clause, CmpOp, Expr, Lit};
 use lemmalog_syntax::Term;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -43,11 +43,18 @@ fn atom(a: &Atom) -> Result<String, String> {
             .join(", ")
     ))
 }
+#[derive(Clone, Copy)]
+enum AtomPosition {
+    Positive,
+    Negative,
+    Head,
+}
+
 fn check(
     a: &Atom,
     schemas: &BTreeMap<String, Schema>,
     vars: &mut BTreeMap<String, String>,
-    bind: bool,
+    position: AtomPosition,
 ) -> Result<(), String> {
     let schema = schemas
         .get(&a.pred)
@@ -68,15 +75,19 @@ fn check(
                     if previous != kind {
                         return Err(format!("Conflicting types for {v} at {} field {index}: previously {previous}, requires {kind}", a.pred));
                     }
-                } else if bind {
+                } else if matches!(position, AtomPosition::Positive) {
                     vars.insert(v.clone(), kind.clone());
                 } else {
-                    return Err(format!("Unbound head variable {v} in {}", a.pred));
+                    let location = match position {
+                        AtomPosition::Negative => "negated",
+                        _ => "head",
+                    };
+                    return Err(format!("Unbound {location} variable {v} in {}", a.pred));
                 }
             }
             Term::Int(_) if kind == "int" => {}
             Term::Sym(_) if kind == "string" => {}
-            Term::Wildcard if bind => {}
+            Term::Wildcard if !matches!(position, AtomPosition::Head) => {}
             _ => {
                 return Err(format!(
                     "Unsupported or mismatched term {t:?} at {} field {index}: requires {kind}",
@@ -87,7 +98,7 @@ fn check(
     }
     Ok(())
 }
-/// Lower a typed, positive, non-recursive subset of Lemmalog's existing AST.
+/// Lower typed rules with positive recursion and stratified negation.
 /// Unsupported constructs fail before the installed program is touched.
 pub fn lower(rules: &str, schemas: &BTreeMap<String, Schema>) -> Result<String, String> {
     lower_with_operators(rules, schemas, &[])
@@ -139,14 +150,14 @@ pub(super) fn lower_clauses_with_operators(
             fields.join(", ")
         ));
     }
-    let mut dependencies: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut dependencies: BTreeMap<String, Vec<(String, DependencyKind)>> = BTreeMap::new();
     for (index, operator) in operators.iter().enumerate() {
         operator.validate(schemas)?;
         let (vertices, edges, output) = operator.relations();
-        dependencies
-            .entry(output.into())
-            .or_default()
-            .extend([vertices.into(), edges.into()]);
+        dependencies.entry(output.into()).or_default().extend([
+            (vertices.into(), DependencyKind::Native),
+            (edges.into(), DependencyKind::Native),
+        ]);
         out.push_str(&operator.source(index));
     }
     for (index, c) in clauses.iter().enumerate() {
@@ -166,16 +177,30 @@ pub(super) fn lower_clauses_with_operators(
         let mut vars = BTreeMap::new();
         for lit in &c.body {
             if let Lit::Pos(a) = lit {
-                check(a, schemas, &mut vars, true)?;
+                check(a, schemas, &mut vars, AtomPosition::Positive)?;
                 dependencies
                     .entry(c.head.pred.clone())
                     .or_default()
-                    .push(a.pred.clone());
+                    .push((a.pred.clone(), DependencyKind::Positive));
             }
         }
-        check(&c.head, schemas, &mut vars, false)?;
+        check(&c.head, schemas, &mut vars, AtomPosition::Head)?;
         let mut body = Vec::new();
+        let mut negative_body = Vec::new();
         for lit in &c.body {
+            if let Lit::Neg(a) = lit {
+                check(a, schemas, &mut vars, AtomPosition::Negative)?;
+                dependencies
+                    .entry(c.head.pred.clone())
+                    .or_default()
+                    .push((a.pred.clone(), DependencyKind::Negative));
+                // DDlog requires variables bound before an antijoin. Moving
+                // negated atoms after the positive body also accepts authored
+                // negation preceding its positive binder, without changing
+                // generated source for previously supported programs.
+                negative_body.push(format!("not {}", atom(a)?));
+                continue;
+            }
             body.push(match lit {
                 Lit::Pos(a) => atom(a)?,
                 Lit::Cmp(op, left, Expr::T(right)) => {
@@ -207,12 +232,12 @@ pub(super) fn lower_clauses_with_operators(
                 }
                 _ => {
                     return Err(
-                        "Negation, aggregates, arithmetic and clock builtins are not supported"
-                            .into(),
+                        "Aggregates, arithmetic and clock builtins are not supported".into(),
                     )
                 }
             });
         }
+        body.extend(negative_body);
         if vars.is_empty() {
             return Err("Rule must bind at least one variable".into());
         }
@@ -241,25 +266,55 @@ pub(super) fn lower_clauses_with_operators(
             names.join(", ")
         ));
     }
-    fn visit(
-        n: &str,
-        graph: &BTreeMap<String, Vec<String>>,
-        stack: &mut Vec<String>,
-    ) -> Result<(), String> {
-        if stack.iter().any(|s| s == n) {
-            return Err("Recursive rules are not supported by this initial adapter".into());
-        }
-        stack.push(n.to_string());
-        if let Some(edges) = graph.get(n) {
-            for next in edges {
-                visit(next, graph, stack)?;
+    validate_dependencies(&dependencies)?;
+    Ok(out)
+}
+
+#[derive(Clone, Copy)]
+enum DependencyKind {
+    Positive,
+    Negative,
+    Native,
+}
+
+/// A negative edge must not belong to any dependency cycle. Pure positive
+/// cycles are finite-domain DDlog least fixpoints: authored arithmetic and
+/// term constructors remain unsupported. Native transformers are not ordinary
+/// monotone rule bodies, so cycles through their inputs remain unsupported.
+fn validate_dependencies(
+    graph: &BTreeMap<String, Vec<(String, DependencyKind)>>,
+) -> Result<(), String> {
+    let reaches = |start: &str, target: &str| {
+        let mut pending = vec![start];
+        let mut visited = BTreeSet::new();
+        while let Some(node) = pending.pop() {
+            if node == target {
+                return true;
+            }
+            if !visited.insert(node) {
+                continue;
+            }
+            if let Some(edges) = graph.get(node) {
+                pending.extend(edges.iter().map(|(next, _)| next.as_str()));
             }
         }
-        stack.pop();
-        Ok(())
+        false
+    };
+    for (head, edges) in graph {
+        for (body, kind) in edges {
+            if matches!(kind, DependencyKind::Positive) || !reaches(body, head) {
+                continue;
+            }
+            return Err(match kind {
+                DependencyKind::Negative => format!(
+                    "Unstratified negation: {head} negatively depends on {body} in a dependency cycle"
+                ),
+                DependencyKind::Native => format!(
+                    "Recursive dependency through native operator: {head} depends on {body}"
+                ),
+                DependencyKind::Positive => unreachable!(),
+            });
+        }
     }
-    for name in dependencies.keys() {
-        visit(name, &dependencies, &mut Vec::new())?;
-    }
-    Ok(out)
+    Ok(())
 }
