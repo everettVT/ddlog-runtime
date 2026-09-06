@@ -16,7 +16,6 @@ fn lowers_existing_ast_and_checks_types() {
         "actionable(P,F) :- finding(P,F,S), !actionable(P,F).",
         "actionable(P,X) :- finding(P,F,S).",
         "actionable(P,F) :- finding(P,F,S), S < \"two\".",
-        "actionable(P,F) :- actionable(P,F).",
         "actionable(P,F) :- finding(P,F).",
     ] {
         assert!(lower(bad, &schemas()).is_err(), "{bad}");

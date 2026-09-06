@@ -240,7 +240,7 @@ impl Expansion {
             self.origins.push(json!({"kind":"processor_rule","node":path,"processor_id":reference.processor_id,"version":reference.version,"rule":rule,"name":clause.name,"head":clause.head.pred}));
             clause.head.pred = names[&clause.head.pred].clone();
             for literal in &mut clause.body {
-                if let Lit::Pos(atom) = literal {
+                if let Lit::Pos(atom) | Lit::Neg(atom) = literal {
                     atom.pred = names[&atom.pred].clone();
                 }
             }

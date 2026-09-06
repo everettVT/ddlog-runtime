@@ -224,10 +224,6 @@ fn invalid_composition_never_writes_or_moves_a_pointer() {
     let mut uncovered_input = base.clone();
     uncovered_input["bindings"] = json!([]);
     invalid.push(uncovered_input);
-    let mut cyclic = base.clone();
-    cyclic["inputs"] = json!({});
-    cyclic["bindings"].as_array_mut().unwrap().push(json!({"from":{"node":"second","relation":"result"},"to":{"node":"first","relation":"source"}}));
-    invalid.push(cyclic);
     let before = snapshot(&directory.0.join("registry"));
     for bad in invalid {
         let candidate = composed(serde_json::from_value(bad).unwrap());
@@ -238,6 +234,53 @@ fn invalid_composition_never_writes_or_moves_a_pointer() {
         assert_eq!(snapshot(&directory.0.join("registry")), before);
         assert_eq!(registry.get(&first.processor_id, None).unwrap(), first);
     }
+}
+
+#[test]
+fn composition_allows_positive_recursion_and_rejects_cross_node_negative_cycles() {
+    let directory = TestDirectory::new();
+    let registry = directory.registry();
+    let leaf = registry.create(definition(leaf_json()), None).unwrap();
+    let mut cyclic = serde_json::to_value(manifest(&leaf)).unwrap();
+    cyclic["inputs"] = json!({});
+    cyclic["bindings"].as_array_mut().unwrap().push(json!({
+        "from":{"node":"second","relation":"result"},
+        "to":{"node":"first","relation":"source"}
+    }));
+    registry
+        .create(composed(serde_json::from_value(cyclic).unwrap()), None)
+        .unwrap();
+
+    let negative_leaf = registry
+        .create(
+            definition(json!({
+                "rules":"result(X) :- seed(X), !source(X).",
+                "schemas":{
+                    "seed":{"input":true,"fields":["string"]},
+                    "source":{"input":true,"fields":["string"]},
+                    "result":{"input":false,"fields":["string"]}
+                },
+                "interface":{"inputs":["seed","source"],"outputs":["result"]}
+            })),
+            None,
+        )
+        .unwrap();
+    let negative_cycle = serde_json::from_value(json!({
+        "nodes":{"left":reference(&negative_leaf),"right":reference(&negative_leaf)},
+        "inputs":{"seed":{"fields":["string"],"targets":[
+            {"node":"left","relation":"seed"},{"node":"right","relation":"seed"}
+        ]}},
+        "bindings":[
+            {"from":{"node":"left","relation":"result"},"to":{"node":"right","relation":"source"}},
+            {"from":{"node":"right","relation":"result"},"to":{"node":"left","relation":"source"}}
+        ],
+        "outputs":{"result":{"node":"left","relation":"result"}}
+    }))
+    .unwrap();
+    let before = snapshot(&directory.0.join("registry"));
+    let error = registry.create(composed(negative_cycle), None).unwrap_err();
+    assert!(error.contains("Unstratified negation"), "{error}");
+    assert_eq!(snapshot(&directory.0.join("registry")), before);
 }
 
 #[test]

@@ -230,8 +230,7 @@ fn invalid_definitions_never_publish_or_advance_current() {
         "visible(X :- item(X).",               // Invalid syntax.
         "visible(Y) :- item(X).",              // Unbound head variable.
         "visible(X) :- missing(X).",           // Undeclared relation.
-        "visible(X) :- visible(X).",           // Unsupported recursion.
-        "visible(X) :- item(X), !visible(X).", // Unsupported negation.
+        "visible(X) :- item(X), !visible(X).", // Unstratified negation.
         "visible(\"literal\").",               // Facts are not authored rules.
     ] {
         let mut candidate = definition();

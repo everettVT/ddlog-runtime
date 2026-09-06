@@ -14,7 +14,7 @@ resolver = "2"
 [dependencies]
 lemmalog-syntax = { path = "crates/syntax", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
 
 [target.'cfg(unix)'.dependencies]
