@@ -12,6 +12,7 @@ wire shapes and operational prerequisites.
 | Composition | Resolve exact versions, isolate private names, validate bindings, and preserve public interfaces through nesting | `tests/processor_composition_registry.rs` |
 | Activation | Compile a candidate before replacement; compatible retained inputs replay; failed replacement preserves the prior usable program | `tests/memory_runtime.rs` |
 | Input changes | Validate the complete input transaction before execution; acknowledged state changes only after completion; uncertain native failure disables continued use | `tests/memory_runtime.rs` |
+| Bounded reads | Bound returned rows/bytes, bind continuation to the backend revision and request, drain selected native output after local limit errors; no indexed-query latency guarantee | `tests/memory_runtime.rs`, [bounded reads](bounded-reads.md) |
 | Registered requests | Claim before completion; preserve late results with explicit freshness; identical completion is idempotent; conflicting completion fails; uncertain settlement never implies permission to repeat provider work | `tests/registered_requests.rs` |
 | Shared access | Connections share one owner; disconnect does not stop it; pinned versions and exported ports remain enforced | `tests/test_shared_host.py`, `tests/upstream_compatibility.rs` |
 | Checkpoints | Explicit pure-backend checkpoint; integrity-checked restore into a fresh backend; reconstruct outputs from acknowledged inputs | `tests/memory_runtime.rs`, [checkpoint contract](checkpoints.md) |

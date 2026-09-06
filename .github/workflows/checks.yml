@@ -16,6 +16,7 @@ jobs:
       - name: Formatting and transport-free contracts
         run: |
           cargo fmt --all --check
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
           cargo test --locked --workspace
       - name: MCP and controlled worker contracts
         run: |

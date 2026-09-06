@@ -372,7 +372,8 @@ fn corrupt_and_unsupported_checkpoints_fail_before_compilation_or_activation() {
         .restore_checkpoint(&path)
         .unwrap_err()
         .contains("integrity"));
-    let edits: Vec<Box<dyn FnOnce(&mut Value)>> = vec![
+    type CheckpointEdit = Box<dyn FnOnce(&mut Value)>;
+    let edits: Vec<CheckpointEdit> = vec![
         Box::new(|state| state["format_version"] = json!(999)),
         Box::new(|state| state["program_version"] = json!(999)),
         Box::new(|state| {

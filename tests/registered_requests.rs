@@ -113,3 +113,39 @@ fn lost_completion_ack_keeps_request_unsettled_and_disables_runtime_reuse() {
     assert!(agent.complete(&mut backend, &id, "result").is_err());
     assert_eq!(agent.status()["requests"][0]["status"], "claimed");
 }
+
+#[test]
+fn signed_integer_boundaries_and_invalid_tail_preserve_complete_input_state() {
+    let f = Fixture::new();
+    let mut backend = f.backend("typed");
+    backend
+        .install(
+            "echo(N,S) :- source(N,S).",
+            json!({
+                "source":{"input":true,"fields":["int","string"]},
+                "echo":{"input":false,"fields":["int","string"]}
+            }),
+        )
+        .unwrap();
+    backend
+        .apply(&json!([
+            {"op":"insert","predicate":"source","values":[i64::MIN,"low"]},
+            {"op":"insert","predicate":"source","values":[i64::MAX,"high"]}
+        ]))
+        .unwrap();
+    let before = serde_json::to_value(backend.export_inputs().unwrap()).unwrap();
+    let revision = backend.revision();
+    for invalid in [json!(u64::MAX), json!(1.5), json!(true), json!("1")] {
+        assert!(backend
+            .apply(&json!([
+                {"op":"delete","predicate":"source","values":[i64::MIN,"low"]},
+                {"op":"insert","predicate":"source","values":[invalid,"invalid"]}
+            ]))
+            .is_err());
+        assert_eq!(backend.revision(), revision);
+        assert_eq!(
+            serde_json::to_value(backend.export_inputs().unwrap()).unwrap(),
+            before
+        );
+    }
+}

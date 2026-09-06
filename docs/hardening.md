@@ -1,8 +1,8 @@
 # Hardening baseline — September 6, 2026
 
-Assessed merged revision `f763612129a0275e53b34869a428c12c1a5bf7a9` in an
-isolated checkout. Active bounded-read work is excluded and must be assessed
-when available. This is a measured baseline and targeted cleanup, not a
+Initially assessed `f763612129a0275e53b34869a428c12c1a5bf7a9`, then rebased and
+revalidated against merged `dc50b2f43c430ff406c6145e180afb0cf0584449`, including
+bounded reads. All work is in an isolated checkout. This is a measured baseline and targeted cleanup, not a
 production certification or a claim that all hotspots have been eliminated.
 
 ## Changes and validation
@@ -12,20 +12,23 @@ production certification or a claim that all hotspots have been eliminated.
 - Added registered-request contracts for claim requirements, stale completion,
   identical/conflicting completion, and lost native acknowledgment. They test
   the real Rust admission implementation with explicitly simulated transport.
+- Added signed-integer extrema and whole-batch rejection checks relevant to M0.
 - Corrected syntax documentation that implied aggregate execution support.
 - Added the runtime specification with explicit tests and unsupported guarantees.
 - Simplified three Clippy findings without changing public APIs or generated code.
-- Final instrumented Rust suite: 69 passed, one native-compiler test ignored.
+- Final instrumented Rust suite: 75 passed, one native-compiler test ignored.
 - Final Python suite: 58 passed. Unix socket access required an escalation;
   the initial sandbox denial occurred before any runtime test executed.
-- Strict library Clippy passed. All-target Clippy additionally reports the
-  existing boxed-closure type complexity in `tests/memory_runtime.rs`; that file
-  is owned by ongoing checkpoint work and was not modified here.
+- Strict all-target/all-feature Clippy passed. After checkpoint ownership was
+  released, a local type alias removed its test-only type-complexity warning.
+  CI now runs strict Clippy alongside the existing contract suites.
 
 ## Measurement
 
 Tools: rustc 1.94.1, cargo-llvm-cov 0.9.1, Lizard 1.24.0. Runtime source line
-coverage is 2795/3067 = **91.13%**, up from 2755/3065 = **89.89%**. These totals
+coverage is 2983/3275 = **91.08%** on the rebased product. On the earlier
+like-for-like baseline it improved from 2755/3065 = **89.89%** to 2795/3067 =
+**91.13%** before the bounded-read merge changed the measured population. These totals
 exclude integration tests, the separate syntax crate and generated/native engine
 code. Host subprocess profiles from the Python suite are included. Forced process
 termination can omit profiling data, so an uncovered function is a review target,
@@ -64,7 +67,7 @@ suite as native compilation or formal validation of a Lean-to-dataflow compiler.
 
 ## Remaining work before a broad clean bill
 
-Reconcile the incoming bounded-read branch; review compiler, composition and host
+The bounded-read branch is now included. Review compiler, composition and host
 hotspots in context rather than splitting them merely to reduce a score. Make
 native compiler validation available as explicit evidence, and decide which
 coverage/complexity checks belong in CI after the baseline stabilizes. The current
