@@ -2,9 +2,9 @@
 pub mod ast;
 pub use ast::{parse_program, Atom, Clause, CmpOp, Expr, Lit, ParseError};
 
-/// Aggregate functions usable in rule HEAD arguments only
-/// (`kit_count(P, count(K))`). Lowered internally to a temp relation plus
-/// a group-by fold; the head predicate completes before any reader.
+/// Aggregate syntax recognized in rule heads, such as `kit_count(P, count(K))`.
+/// This crate only parses the syntax; each consumer decides which constructs it
+/// supports. DDlog Runtime currently rejects aggregates during lowering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AggFn {
     Count,

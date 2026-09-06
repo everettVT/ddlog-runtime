@@ -40,10 +40,8 @@ impl ProcessControl {
     }
     pub fn track(&self, pid: u32) -> Group {
         self.inner.groups.lock().unwrap().insert(pid);
-        if self.stopped() {
-            if self.inner.detached {
-                kill_group(pid);
-            }
+        if self.stopped() && self.inner.detached {
+            kill_group(pid);
         }
         Group {
             pid,

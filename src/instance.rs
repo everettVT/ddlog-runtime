@@ -50,88 +50,7 @@ impl ProgramInstance {
             );
         }
         if name.starts_with("processor_") && name != "processor_install" {
-            let registry = self
-                .registry
-                .as_ref()
-                .ok_or("Processor registry is not configured")?;
-            if name == "processor_list" || name == "processor_search" {
-                let limit = a
-                    .get("limit")
-                    .map(|value| value.as_u64().ok_or("limit must be an integer"))
-                    .transpose()?
-                    .unwrap_or(20);
-                let limit = usize::try_from(limit).map_err(|e| e.to_string())?;
-                let after = a.get("after").map(|_| string(a, "after")).transpose()?;
-                let include_archived = a
-                    .get("include_archived")
-                    .map(|value| value.as_bool().ok_or("include_archived must be a boolean"))
-                    .transpose()?
-                    .unwrap_or(false);
-                let page = if name == "processor_search" {
-                    registry.search(string(a, "query")?, limit, after, include_archived)?
-                } else {
-                    registry.list(limit, after, include_archived)?
-                };
-                return serde_json::to_value(page).map_err(|e| e.to_string());
-            }
-            if name == "processor_archive" || name == "processor_restore" {
-                let expected_revision = a["expected_revision"]
-                    .as_u64()
-                    .ok_or("Missing nonnegative expected_revision")?;
-                let lifecycle = if name == "processor_archive" {
-                    registry.archive(
-                        string(a, "processor_id")?,
-                        string(a, "expected_version")?,
-                        expected_revision,
-                    )?
-                } else {
-                    registry.restore(
-                        string(a, "processor_id")?,
-                        string(a, "expected_version")?,
-                        expected_revision,
-                    )?
-                };
-                return serde_json::to_value(lifecycle).map_err(|e| e.to_string());
-            }
-            let provenance = || -> Result<Option<GitProvenance>, String> {
-                a.get("git_provenance")
-                    .filter(|v| !v.is_null())
-                    .map(|v| serde_json::from_value(v.clone()).map_err(|e| e.to_string()))
-                    .transpose()
-            };
-            let definition = || -> Result<ProcessorDefinition, String> {
-                // Select the shape before deserialization so missing/unknown
-                // fields remain visible instead of an opaque untagged-enum error.
-                if a["definition"].get("composition").is_some() {
-                    serde_json::from_value(a["definition"].clone())
-                        .map(ProcessorDefinition::Composition)
-                        .map_err(|e| e.to_string())
-                } else {
-                    serde_json::from_value(a["definition"].clone())
-                        .map(ProcessorDefinition::Program)
-                        .map_err(|e| e.to_string())
-                }
-            };
-            let record = match name {
-                "processor_create" => registry.create(definition()?, provenance()?)?,
-                "processor_publish" => registry.publish(
-                    string(a, "processor_id")?,
-                    definition()?,
-                    string(a, "expected_version")?,
-                    provenance()?,
-                )?,
-                "processor_fork" => registry.fork(
-                    string(a, "processor_id")?,
-                    string(a, "version")?,
-                    provenance()?,
-                )?,
-                "processor_get" => registry.get(
-                    string(a, "processor_id")?,
-                    a.get("version").map(|_| string(a, "version")).transpose()?,
-                )?,
-                _ => return Err("Unknown tool".into()),
-            };
-            return serde_json::to_value(record).map_err(|e| e.to_string());
+            return self.execute_registry(name, a);
         }
         if self.instance_id.is_some()
             && self.backend.health() == "failed"
@@ -149,97 +68,7 @@ impl ProgramInstance {
             return Err("Instance is pinned to an immutable processor version; create a new instance to select another version".into());
         }
         match name {
-            "processor_install" => {
-                if self.backend.health() != "uninitialized" || self.agent.is_some() {
-                    return Err("Select a processor only in a fresh instance".into());
-                }
-                self.registry
-                    .as_ref()
-                    .ok_or("Processor registry is not configured")?
-                    .ensure_active(string(a, "processor_id")?)?;
-                let record = self
-                    .registry
-                    .as_ref()
-                    .ok_or("Processor registry is not configured")?
-                    .get(
-                        string(a, "processor_id")?,
-                        a.get("version").map(|_| string(a, "version")).transpose()?,
-                    )?;
-                let mut result = match record.definition {
-                    ProcessorDefinition::Composition(definition) => {
-                        let compiled = self
-                            .registry
-                            .as_ref()
-                            .unwrap()
-                            .compile_composition(&definition.composition)?;
-                        let result = self
-                            .backend
-                            .install_source(compiled.source, compiled.schemas)?;
-                        self.interface = Some(PublicInterface {
-                            inputs: compiled.resolution.inputs.clone(),
-                            outputs: compiled.resolution.outputs.clone(),
-                        });
-                        self.composition = Some(compiled.resolution);
-                        result
-                    }
-                    ProcessorDefinition::Program(definition) => {
-                        let result = if let Some(binding) = definition.operation {
-                            if !definition.operators.is_empty() {
-                                return Err("Typed operators cannot be combined with a registered operation; put the operator in a separate pure program".into());
-                            }
-                            let operation = self
-                                .operations
-                                .get(&binding.name)
-                                .ok_or("Pinned operation is not registered on this host")?
-                                .clone();
-                            if operation.version != binding.version
-                                || operation.description != binding.description
-                            {
-                                return Err(
-                                    "Pinned operation definition does not match this host registry"
-                                        .into(),
-                                );
-                            }
-                            let (agent, result) = AgentProgram::install(
-                                &mut self.backend,
-                                &binding.name,
-                                operation,
-                                &definition.rules,
-                                definition.schemas,
-                            )?;
-                            self.agent = Some(agent);
-                            result
-                        } else {
-                            self.backend.install_with_operators(
-                                &definition.rules,
-                                definition.schemas,
-                                &definition.operators,
-                            )?
-                        };
-                        self.interface = definition.interface.map(|interface| PublicInterface {
-                            inputs: interface
-                                .inputs
-                                .into_iter()
-                                .map(|name| (name.clone(), name))
-                                .collect(),
-                            outputs: interface
-                                .outputs
-                                .into_iter()
-                                .map(|name| (name.clone(), name))
-                                .collect(),
-                        });
-                        result
-                    }
-                };
-                self.processor =
-                    Some(json!({"processor_id":record.processor_id,"version":record.version}));
-                result["processor"] = self.processor.clone().unwrap();
-                if let Some(composition) = &self.composition {
-                    result["composition"] =
-                        serde_json::to_value(composition).map_err(|e| e.to_string())?;
-                }
-                Ok(result)
-            }
+            "processor_install" => self.install_processor(a),
             "agent_operations" => Ok(
                 json!({"operations":self.operations.iter().map(|(name,op)|json!({"name":name,"version":op.version,"description":op.description,"input":"string","output":"string"})).collect::<Vec<_>>()}),
             ),
@@ -355,6 +184,180 @@ impl ProgramInstance {
             }
             _ => Err("Unknown tool".into()),
         }
+    }
+
+    fn execute_registry(&self, name: &str, a: &Value) -> Result<Value, String> {
+        let registry = self
+            .registry
+            .as_ref()
+            .ok_or("Processor registry is not configured")?;
+        if name == "processor_list" || name == "processor_search" {
+            let limit = a
+                .get("limit")
+                .map(|value| value.as_u64().ok_or("limit must be an integer"))
+                .transpose()?
+                .unwrap_or(20);
+            let limit = usize::try_from(limit).map_err(|e| e.to_string())?;
+            let after = a.get("after").map(|_| string(a, "after")).transpose()?;
+            let include_archived = a
+                .get("include_archived")
+                .map(|value| value.as_bool().ok_or("include_archived must be a boolean"))
+                .transpose()?
+                .unwrap_or(false);
+            let page = if name == "processor_search" {
+                registry.search(string(a, "query")?, limit, after, include_archived)?
+            } else {
+                registry.list(limit, after, include_archived)?
+            };
+            return serde_json::to_value(page).map_err(|e| e.to_string());
+        }
+        if name == "processor_archive" || name == "processor_restore" {
+            let expected_revision = a["expected_revision"]
+                .as_u64()
+                .ok_or("Missing nonnegative expected_revision")?;
+            let lifecycle = if name == "processor_archive" {
+                registry.archive(
+                    string(a, "processor_id")?,
+                    string(a, "expected_version")?,
+                    expected_revision,
+                )?
+            } else {
+                registry.restore(
+                    string(a, "processor_id")?,
+                    string(a, "expected_version")?,
+                    expected_revision,
+                )?
+            };
+            return serde_json::to_value(lifecycle).map_err(|e| e.to_string());
+        }
+        let provenance = || -> Result<Option<GitProvenance>, String> {
+            a.get("git_provenance")
+                .filter(|v| !v.is_null())
+                .map(|v| serde_json::from_value(v.clone()).map_err(|e| e.to_string()))
+                .transpose()
+        };
+        let definition = || -> Result<ProcessorDefinition, String> {
+            // Select the shape before deserialization so missing/unknown
+            // fields remain visible instead of an opaque untagged-enum error.
+            if a["definition"].get("composition").is_some() {
+                serde_json::from_value(a["definition"].clone())
+                    .map(ProcessorDefinition::Composition)
+                    .map_err(|e| e.to_string())
+            } else {
+                serde_json::from_value(a["definition"].clone())
+                    .map(ProcessorDefinition::Program)
+                    .map_err(|e| e.to_string())
+            }
+        };
+        let record = match name {
+            "processor_create" => registry.create(definition()?, provenance()?)?,
+            "processor_publish" => registry.publish(
+                string(a, "processor_id")?,
+                definition()?,
+                string(a, "expected_version")?,
+                provenance()?,
+            )?,
+            "processor_fork" => registry.fork(
+                string(a, "processor_id")?,
+                string(a, "version")?,
+                provenance()?,
+            )?,
+            "processor_get" => registry.get(
+                string(a, "processor_id")?,
+                a.get("version").map(|_| string(a, "version")).transpose()?,
+            )?,
+            _ => return Err("Unknown tool".into()),
+        };
+        serde_json::to_value(record).map_err(|e| e.to_string())
+    }
+
+    fn install_processor(&mut self, a: &Value) -> Result<Value, String> {
+        if self.backend.health() != "uninitialized" || self.agent.is_some() {
+            return Err("Select a processor only in a fresh instance".into());
+        }
+        self.registry
+            .as_ref()
+            .ok_or("Processor registry is not configured")?
+            .ensure_active(string(a, "processor_id")?)?;
+        let record = self
+            .registry
+            .as_ref()
+            .ok_or("Processor registry is not configured")?
+            .get(
+                string(a, "processor_id")?,
+                a.get("version").map(|_| string(a, "version")).transpose()?,
+            )?;
+        let mut result = match record.definition {
+            ProcessorDefinition::Composition(definition) => {
+                let compiled = self
+                    .registry
+                    .as_ref()
+                    .unwrap()
+                    .compile_composition(&definition.composition)?;
+                let result = self
+                    .backend
+                    .install_source(compiled.source, compiled.schemas)?;
+                self.interface = Some(PublicInterface {
+                    inputs: compiled.resolution.inputs.clone(),
+                    outputs: compiled.resolution.outputs.clone(),
+                });
+                self.composition = Some(compiled.resolution);
+                result
+            }
+            ProcessorDefinition::Program(definition) => {
+                let result = if let Some(binding) = definition.operation {
+                    if !definition.operators.is_empty() {
+                        return Err("Typed operators cannot be combined with a registered operation; put the operator in a separate pure program".into());
+                    }
+                    let operation = self
+                        .operations
+                        .get(&binding.name)
+                        .ok_or("Pinned operation is not registered on this host")?
+                        .clone();
+                    if operation.version != binding.version
+                        || operation.description != binding.description
+                    {
+                        return Err(
+                            "Pinned operation definition does not match this host registry".into(),
+                        );
+                    }
+                    let (agent, result) = AgentProgram::install(
+                        &mut self.backend,
+                        &binding.name,
+                        operation,
+                        &definition.rules,
+                        definition.schemas,
+                    )?;
+                    self.agent = Some(agent);
+                    result
+                } else {
+                    self.backend.install_with_operators(
+                        &definition.rules,
+                        definition.schemas,
+                        &definition.operators,
+                    )?
+                };
+                self.interface = definition.interface.map(|interface| PublicInterface {
+                    inputs: interface
+                        .inputs
+                        .into_iter()
+                        .map(|name| (name.clone(), name))
+                        .collect(),
+                    outputs: interface
+                        .outputs
+                        .into_iter()
+                        .map(|name| (name.clone(), name))
+                        .collect(),
+                });
+                result
+            }
+        };
+        self.processor = Some(json!({"processor_id":record.processor_id,"version":record.version}));
+        result["processor"] = self.processor.clone().unwrap();
+        if let Some(composition) = &self.composition {
+            result["composition"] = serde_json::to_value(composition).map_err(|e| e.to_string())?;
+        }
+        Ok(result)
     }
 }
 

@@ -100,7 +100,7 @@ pub fn validate_interface(program: &ProgramDefinition) -> Result<()> {
         if !outputs.insert(name.clone()) {
             return Err(format!("Duplicate interface output {name}"));
         }
-        if !schemas.get(name).is_some_and(|schema| !schema.input) {
+        if !matches!(schemas.get(name), Some(schema) if !schema.input) {
             return Err(format!(
                 "Interface output {name} must name a declared derived relation"
             ));
