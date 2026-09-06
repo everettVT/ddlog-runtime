@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import queue
-import select
 import socket
 import subprocess
 import tempfile
@@ -58,9 +57,13 @@ class BridgeTransport(unittest.TestCase):
                         bridge.stdin.write(request)
                         event, value = events.get(timeout=12)
                         self.assertEqual((event, value), ('request', request), 'Bridge did not forward stdin to the host')
-                        ready, _, _ = select.select([bridge.stdout], [], [], 3)
-                        self.assertTrue(ready, 'Host received the request and sent a response, but bridge stdout waited for EOF')
-                        received = bridge.stdout.readline()
+                        replies = queue.Queue()
+                        reader = threading.Thread(target=lambda: replies.put(bridge.stdout.readline()), daemon=True)
+                        reader.start()
+                        try:
+                            received = replies.get(timeout=3)
+                        except queue.Empty:
+                            self.fail('Host received the request and sent a response, but bridge stdout waited for EOF')
                         self.assertEqual(received, response)
                         self.assertIsNone(bridge.poll(), 'Bridge must remain open for the next request')
                     finally:

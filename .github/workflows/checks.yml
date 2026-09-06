@@ -21,5 +21,5 @@ jobs:
         run: |
           cargo test --locked --workspace --all-features
           cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
-          python3 -m unittest discover -s tests -p 'test_bridge_transport.py' -v
-          python3 -m unittest discover -s tests -p 'test_*.py' -v --failfast
+          timeout 30s python3 -m unittest discover -s tests -p 'test_bridge_transport.py' -v
+          timeout 120s python3 -m unittest discover -s tests -p 'test_*.py' -v --failfast

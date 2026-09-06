@@ -1,15 +1,17 @@
 {
-  "host_executable_sha256": "1e772942e5ced35024f0d5c891b155d7856e08c2b532d54dbd6cf72f6907e1ef",
+  "host_executable_sha256": "5da1c0d232a9eb7f3c93e2415f17aa0ab257889f238b89fb7e43f70a7ddf8758",
   "independent_review": {
     "additional_tests_or_builds": false,
     "result": "No blocking issues; approved for first PR publication, not merge",
-    "scope": "Read-only comparison of semantic owner, MCP adapter, host, registry, lowering, syntax, native source, dependency graph, contracts and evidence against upstream"
+    "scope": "Read-only comparison of semantic owner, MCP adapter, host, registry, lowering, syntax, native source, dependency graph, contracts and evidence against upstream; follow-up review of bounded bridge forwarding and open-connection regression"
   },
   "memory_source_modified": false,
   "notes": [
     "An initial direct-API test fixture failed because its fake runtime lacked its test-only control path; the fixture was corrected, then the focused regression and full Rust profiles passed.",
     "The first Python host test run was denied Unix socket creation by the execution sandbox; the classified rerun with local socket permission passed all 56 tests.",
-    "No new DDlog compiler run or provider call occurred. The native smoke driver verified exact generated source, both native source files, and executable hashes before reusing the retained artifact."
+    "No new DDlog compiler run or provider call occurred. The native smoke driver verified exact generated source, both native source files, and executable hashes before reusing the retained artifact.",
+    "The first Linux CI run passed all Rust contracts but stalled on bridge initialize. A diagnostic showed response delivery waited for the synthetic socket peer to close after 10 seconds. Only socket-to-stdout forwarding was changed to an explicit read/write/flush loop; the regression now bounds full response delivery while both peers remain open.",
+    "The final bridge build passed all 46 Rust all-feature tests and all 57 controlled Python tests on macOS. Native smoke was repeated against that host: 98 comparisons, one activation in this final run, zero fresh native compilations and zero provider calls. Across both extraction smoke runs there were two verified-reuse activations."
   ],
   "production_sha256": {
     "Cargo.lock": "99344279ea6121a796138e6cb4bb3d192d7d70210f216d84d79738da5f78e164",
@@ -22,7 +24,7 @@
     "scripts/lemmalog_inference_worker.py": "8cbf05517d7678aad3321125a49c14b3fee3895884b530015e3914a24b096565",
     "src/bin/lemmalog-ddlog-mcp.rs": "b711edfbe92b16f269bb1c2105aa703b08b760a623358dd00f24daea25005cd0",
     "src/composition.rs": "899561e408f3ef6ca345f248255daa73dc373d5938d0ee50dbb6b2a732a08dfc",
-    "src/host.rs": "e869f0bfca83dd05ddf1557e93f0bab1e35ff4c538ad6a8367b3bd76f79ba443",
+    "src/host.rs": "46b2fbac1e9c817bd3995772cddc7628e716629b928cc88391f614c9338772d7",
     "src/instance.rs": "0c2c727b8cf87998f6bdfc39f4fa34e3fb51dda65fe6377aef752f0f8098ef5e",
     "src/lib.rs": "d9a89fa2c30802e080bca6b5658da888fa7077aa9ff1b00c51c21e174665fb12",
     "src/lower.rs": "2b53ce14e9850d40707201d562d7dbd1304a98093806aadf5cd07d87ba3f7ae3",
@@ -52,8 +54,9 @@
     {
       "command": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
       "passed": true,
+      "platform": "macOS",
       "scope": "controlled providers and simulated host runtime; Unix sockets required",
-      "tests": 56
+      "tests": 57
     },
     {
       "command": "cargo run --offline --manifest-path EXTERNAL_CONSUMER/Cargo.toml",

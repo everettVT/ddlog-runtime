@@ -376,7 +376,24 @@ pub fn connect(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let _ = input.shutdown(std::net::Shutdown::Write);
     });
     let mut output = stream;
-    let result = io::copy(&mut output, &mut io::stdout().lock());
+    // Keep request/response forwarding in userspace. On Linux, io::copy can use
+    // splice while holding the stdout pipe lock during the next socket read,
+    // preventing the client from consuming the reply until the socket closes.
+    let result = (|| -> io::Result<()> {
+        let mut stdout = io::stdout().lock();
+        let mut bytes = [0u8; 16 * 1024];
+        loop {
+            let count = match output.read(&mut bytes) {
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                result => result?,
+            };
+            if count == 0 {
+                return Ok(());
+            }
+            stdout.write_all(&bytes[..count])?;
+            stdout.flush()?;
+        }
+    })();
     let _ = output.shutdown(std::net::Shutdown::Both);
     result?;
     Ok(())
