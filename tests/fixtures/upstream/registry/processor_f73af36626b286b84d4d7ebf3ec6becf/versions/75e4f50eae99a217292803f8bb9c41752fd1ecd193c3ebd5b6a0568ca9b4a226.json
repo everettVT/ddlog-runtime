@@ -1,0 +1,58 @@
+{
+  "format_version": 1,
+  "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+  "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226",
+  "content_sha256": "75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226",
+  "created_at_unix_ms": 1788652894696,
+  "git_provenance": null,
+  "lineage": null,
+  "definition": {
+    "rules": "",
+    "schemas": {
+      "edges": {
+        "fields": [
+          "int",
+          "int"
+        ],
+        "input": true
+      },
+      "labels": {
+        "fields": [
+          "int",
+          "int"
+        ],
+        "input": false
+      },
+      "vertices": {
+        "fields": [
+          "int"
+        ],
+        "input": true
+      }
+    },
+    "operation": null,
+    "interface": {
+      "inputs": [
+        "vertices",
+        "edges"
+      ],
+      "outputs": [
+        "labels"
+      ]
+    },
+    "operators": [
+      {
+        "type": "large_small_star",
+        "vertices": "vertices",
+        "edges": "edges",
+        "output": "labels"
+      }
+    ]
+  },
+  "validation": {
+    "syntax_checked": true,
+    "types_checked": true,
+    "supported_lowering_checked": true,
+    "ddlog_compilation_performed": false
+  }
+}

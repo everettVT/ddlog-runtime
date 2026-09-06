@@ -1,0 +1,10 @@
+{
+  "capabilities": {
+    "tools": {}
+  },
+  "protocolVersion": "2024-11-05",
+  "serverInfo": {
+    "name": "lemmalog-ddlog",
+    "version": "0.2.0"
+  }
+}

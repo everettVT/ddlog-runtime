@@ -1,0 +1,58 @@
+{
+  "algorithm": "alternating_large_star_small_star",
+  "artifact_mode": "verified-reuse",
+  "artifact_provenance": "https://github.com/everettVT/lemmalog/blob/682e726c256496dc5eb2cd71792780bf146551c3/docs/evidence/large-small-star/README.md",
+  "backend": "official DDlog / Differential Dataflow",
+  "build": {
+    "build.log": {
+      "bytes": 253,
+      "sha256": "6438ec3277a61b28e22772d6e3e5e65ef2e30878793a890177bdfa2a7ab577be"
+    },
+    "lemmalog_star.dl": {
+      "bytes": 674,
+      "sha256": "185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb"
+    },
+    "lemmalog_star.rs": {
+      "bytes": 3483,
+      "sha256": "b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e"
+    },
+    "program.dl": {
+      "bytes": 1699,
+      "sha256": "f07707494bcaf69e4c3030007685805bccd78c319fe5c335c7093862902019ee"
+    },
+    "program_cli": {
+      "bytes": 245697344,
+      "sha256": "45eca6cbd741886548ab38d83f32cd8682894ea558a43cc6688e099b3506bb6d"
+    }
+  },
+  "checks": [
+    "registered_and_composed_ordinary_program_with_pinned_native_operator",
+    "bridge_merge_split_isolates_signed_ids_duplicate_reverse_support_and_endpoint_removal",
+    "independent_pipe_clients_disconnect_reconnect_retains_instance",
+    "relabeled_path_80_mutations_and_complete_retraction_match_independent_bfs",
+    "explicit_stop_and_bounded_cleanup"
+  ],
+  "cleanup_errors": [],
+  "generated_source": "// lemmalog_star.dl sha256:185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb\n// lemmalog_star.rs sha256:b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e\nimport lemmalog_star as lemmalog_star\ninput relation R_Input_edges(f0: signed<64>, f1: signed<64>)\ninput relation R_Input_vertices(f0: signed<64>)\noutput relation R_Module0_components(f0: signed<64>, f1: signed<64>)\noutput relation R_Module0_edges(f0: signed<64>, f1: signed<64>)\noutput relation R_Module0_labels(f0: signed<64>, f1: signed<64>)\noutput relation R_Module0_vertices(f0: signed<64>)\noutput relation R_Output_labels(f0: signed<64>, f1: signed<64>)\nrelation StarResult0[(signed<64>, signed<64>)]\nfunction star_vertex0(v: R_Module0_vertices): signed<64> { v.f0 }\nfunction star_from0(e: R_Module0_edges): signed<64> { e.f0 }\nfunction star_to0(e: R_Module0_edges): signed<64> { e.f1 }\napply lemmalog_star::LargeSmallStar(R_Module0_vertices, star_vertex0, R_Module0_edges, star_from0, star_to0) -> (StarResult0)\nR_Module0_components(v, label) :- StarResult0[(v, label)].\noutput relation Evidence0(v_C: signed<64>, v_V: signed<64>)\nEvidence0(v_C, v_V) :- R_Module0_components(v_V, v_C).\nR_Module0_labels(v_V, v_C) :- Evidence0(v_C, v_V).\noutput relation Evidence1(v_X0: signed<64>, v_X1: signed<64>)\nEvidence1(v_X0, v_X1) :- R_Input_edges(v_X0, v_X1).\nR_Module0_edges(v_X0, v_X1) :- Evidence1(v_X0, v_X1).\noutput relation Evidence2(v_X0: signed<64>)\nEvidence2(v_X0) :- R_Input_vertices(v_X0).\nR_Module0_vertices(v_X0) :- Evidence2(v_X0).\noutput relation Evidence3(v_X0: signed<64>, v_X1: signed<64>)\nEvidence3(v_X0, v_X1) :- R_Module0_labels(v_X0, v_X1).\nR_Output_labels(v_X0, v_X1) :- Evidence3(v_X0, v_X1).\n",
+  "leaf_processor": {
+    "processor_id": "processor_a93da088fc18e86a155fe257435a42c7",
+    "version": "sha256:3d94c79b90a6cf86bbf90262b6a9557813d0b07305dce034f771b5aa6a1973fc"
+  },
+  "native_activations": 1,
+  "native_builds": 0,
+  "native_library": "// Kiveris et al., Connected Components in MapReduce and Beyond (2014).\n// Large-star rewires larger neighbors to the closed-neighborhood minimum.\n// Small-star rewires smaller neighbors AND their center to that minimum.\n// Each phase replaces the edge set. Original edges enter at iteration zero;\n// Variable::new_from inside Iterate retains the history needed to propagate\n// later source insertions and deletions through the same iterative computation.\nuse differential_dataflow::collection::Collection;\nuse differential_dataflow::lattice::Lattice;\nuse differential_dataflow::operators::{Iterate, Reduce, Threshold};\nuse timely::dataflow::scopes::Scope;\n\npub fn LargeSmallStar<S, V, N, E, NF, EF, LF>(\n    vertices: &Collection<S, V, Weight>,\n    unpack_vertex: NF,\n    vertex: fn(&N) -> i64,\n    edges: &Collection<S, V, Weight>,\n    unpack_edge: EF,\n    from: fn(&E) -> i64,\n    to: fn(&E) -> i64,\n    pack_label: LF,\n) -> Collection<S, V, Weight>\nwhere\n    S: Scope,\n    S::Timestamp: Lattice + Ord,\n    V: differential_dataflow::Data,\n    N: differential_dataflow::ExchangeData,\n    E: differential_dataflow::ExchangeData,\n    NF: Fn(V) -> N + 'static,\n    EF: Fn(V) -> E + 'static,\n    LF: Fn(ddlog_std::tuple2<i64, i64>) -> V + 'static,\n{\n    let pairs = edges\n        .map(move |value| {\n            let edge = unpack_edge(value);\n            let (u, v) = (from(&edge), to(&edge));\n            if u > v {\n                (u, v)\n            } else {\n                (v, u)\n            }\n        })\n        .distinct_core::<Weight>();\n    let nodes = vertices\n        .map(move |value| vertex(&unpack_vertex(value)))\n        .concat(&pairs.flat_map(|(u, v)| vec![u, v]))\n        .distinct_core::<Weight>();\n    let stars = pairs.filter(|(u, v)| u != v).iterate(|current| {\n        let symmetric = current.concat(&current.map(|(u, v)| (v, u)));\n        let large = symmetric\n            .reduce(|center, neighbors, output| {\n                // reduce orders values; every integrated edge has set semantics.\n                let minimum = (*center).min(*neighbors[0].0);\n                for (neighbor, _) in neighbors {\n                    if **neighbor > *center {\n                        output.push(((**neighbor, minimum), 1));\n                    }\n                }\n            })\n            .map(|(_, edge)| edge)\n            .distinct_core::<Weight>();\n        // Every large-star edge already points from larger to smaller.\n        // Keep the orientation explicit to document the small-star map phase.\n        large\n            .map(|(u, v)| if u > v { (u, v) } else { (v, u) })\n            .reduce(|center, neighbors, output| {\n                let minimum = (*center).min(*neighbors[0].0);\n                if *center != minimum {\n                    output.push(((*center, minimum), 1));\n                }\n                for (neighbor, _) in neighbors {\n                    if **neighbor != minimum {\n                        output.push(((**neighbor, minimum), 1));\n                    }\n                }\n            })\n            .map(|(_, edge)| edge)\n            // Consolidation is required at feedback: cancelling differences\n            // must dissipate, otherwise an empty logical delta can circulate.\n            .distinct_core::<Weight>()\n    });\n    stars\n        .concat(&nodes.map(|node| (node, node)))\n        .reduce(|_, labels, output| output.push((*labels[0].0, 1)))\n        .map(move |(node, label)| pack_label(ddlog_std::tuple2(node, label)))\n}\n",
+  "observation_sha256": {
+    "rpc.jsonl": "239c982ec47163355c612b6c5b6ad85aae8d71a577cc4effa17dae34c64a5d13",
+    "snapshots.jsonl": "22bffd8abecd5ecb1b6c326d8b288e0d88be743ccbad23d052bf620319dd00a2"
+  },
+  "passed": true,
+  "processor": {
+    "processor_id": "processor_91b6e3f47bca66a0833ec611739c731e",
+    "version": "sha256:ff2be162ff25f31c37fd16800fc68beda87ee5804b6d9da95c93554b93d65731"
+  },
+  "provider_calls": 0,
+  "raw_receipt_sha256": "791d652b787b8b28adc861ee11fc8e01e489182ed168051f3495128dada972a1",
+  "rpc_count": 198,
+  "server_sha256": "1e772942e5ced35024f0d5c891b155d7856e08c2b532d54dbd6cf72f6907e1ef",
+  "snapshots_count": 98
+}

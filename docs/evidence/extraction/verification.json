@@ -1,0 +1,84 @@
+{
+  "host_executable_sha256": "1e772942e5ced35024f0d5c891b155d7856e08c2b532d54dbd6cf72f6907e1ef",
+  "independent_review": {
+    "additional_tests_or_builds": false,
+    "result": "No blocking issues; approved for first PR publication, not merge",
+    "scope": "Read-only comparison of semantic owner, MCP adapter, host, registry, lowering, syntax, native source, dependency graph, contracts and evidence against upstream"
+  },
+  "memory_source_modified": false,
+  "notes": [
+    "An initial direct-API test fixture failed because its fake runtime lacked its test-only control path; the fixture was corrected, then the focused regression and full Rust profiles passed.",
+    "The first Python host test run was denied Unix socket creation by the execution sandbox; the classified rerun with local socket permission passed all 56 tests.",
+    "No new DDlog compiler run or provider call occurred. The native smoke driver verified exact generated source, both native source files, and executable hashes before reusing the retained artifact."
+  ],
+  "production_sha256": {
+    "Cargo.lock": "99344279ea6121a796138e6cb4bb3d192d7d70210f216d84d79738da5f78e164",
+    "Cargo.toml": "934525cf19794d41536a2e605e6e37963daf65506c59744d74f5dee906aa367f",
+    "crates/syntax/Cargo.toml": "05c7b2ff343d68623a5277675919b0b66e2f82501b1a02e402187a78208a0695",
+    "crates/syntax/src/ast.rs": "82b4474702883310151808a45d6aa383aab86230b9274ff5f284680f618fb5b6",
+    "crates/syntax/src/lib.rs": "20587adc377c084933c529208f58ca52c1d004488601d28b51e7ec02277be857",
+    "crates/syntax/tests/parser.rs": "f261fcd74484891197952cf9fcca8edba13acd009251daf752dc8d8791a17cde",
+    "scripts/build-ddlog.sh": "0adf16674665ad51ccb4cf7449ccc4407ed4a58fad5a409b2e44d2111ab4dd02",
+    "scripts/lemmalog_inference_worker.py": "8cbf05517d7678aad3321125a49c14b3fee3895884b530015e3914a24b096565",
+    "src/bin/lemmalog-ddlog-mcp.rs": "b711edfbe92b16f269bb1c2105aa703b08b760a623358dd00f24daea25005cd0",
+    "src/composition.rs": "899561e408f3ef6ca345f248255daa73dc373d5938d0ee50dbb6b2a732a08dfc",
+    "src/host.rs": "e869f0bfca83dd05ddf1557e93f0bab1e35ff4c538ad6a8367b3bd76f79ba443",
+    "src/instance.rs": "0c2c727b8cf87998f6bdfc39f4fa34e3fb51dda65fe6377aef752f0f8098ef5e",
+    "src/lib.rs": "d9a89fa2c30802e080bca6b5658da888fa7077aa9ff1b00c51c21e174665fb12",
+    "src/lower.rs": "2b53ce14e9850d40707201d562d7dbd1304a98093806aadf5cd07d87ba3f7ae3",
+    "src/mcp.rs": "94a5e97b5ea49b606966565baf1b7bbaf6bebeb8dc0a546994505bf95bebd477",
+    "src/operations.rs": "6330508d2cb34d1b21c65baa327a66ce08fd3654a8b00dffcafe24b1101de27d",
+    "src/processes.rs": "19374a89271a87fc6e060aec89a424331f0e7061f7c395b8c49af7c4497f8eac",
+    "src/registry.rs": "339295423013d4f109ac96960458cd90e98479f7a06a5d9b1cebb0621ca1d9e5",
+    "src/star.rs": "5cd7088587428bc7018bd0253c8ce46d6c599feb99388394073572045c91f3e2",
+    "src/star/lemmalog_star.dl": "185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb",
+    "src/star/lemmalog_star.rs": "b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e"
+  },
+  "tests": [
+    {
+      "command": "cargo fmt --all --check",
+      "passed": true
+    },
+    {
+      "command": "cargo test --offline --locked --workspace",
+      "passed": true,
+      "tests": 44
+    },
+    {
+      "command": "cargo test --offline --locked --workspace --all-features",
+      "passed": true,
+      "tests": 46
+    },
+    {
+      "command": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
+      "passed": true,
+      "scope": "controlled providers and simulated host runtime; Unix sockets required",
+      "tests": 56
+    },
+    {
+      "command": "cargo run --offline --manifest-path EXTERNAL_CONSUMER/Cargo.toml",
+      "passed": true,
+      "scope": "separate Cargo project, default-features=false, parse/lower and semantic API use"
+    },
+    {
+      "command": "cargo package --offline --allow-dirty -p lemmalog-syntax",
+      "passed": true,
+      "scope": "local package creation and verification; no registry publication"
+    },
+    {
+      "command": "cargo package --offline --allow-dirty --list -p ddlog-runtime",
+      "passed": true,
+      "scope": "runtime package contains native source and build assets, excludes Python bytecode; no registry publication"
+    },
+    {
+      "artifact_mode": "verified-reuse",
+      "command": "python3 scripts/test-large-small-star.py",
+      "complete_output_comparisons": 98,
+      "native_activations": 1,
+      "native_compilations": 0,
+      "passed": true,
+      "provider_calls": 0
+    }
+  ],
+  "upstream_commit": "199a6cd87bbc16e5e5f6069bcef80edebd9c8c9f"
+}

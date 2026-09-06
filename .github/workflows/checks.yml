@@ -1,0 +1,21 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Formatting and transport-free contracts
+        run: |
+          cargo fmt --all --check
+          cargo test --locked --workspace
+      - name: MCP and controlled worker contracts
+        run: |
+          cargo test --locked --workspace --all-features
+          cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
+          python3 -m unittest discover -s tests -p 'test_*.py' -v

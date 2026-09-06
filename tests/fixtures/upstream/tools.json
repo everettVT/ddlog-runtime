@@ -1,0 +1,945 @@
+{
+  "tools": [
+    {
+      "description": "Compile and atomically replace this session's typed positive program, including optional built-in Large-Star/Small-Star operators; replay retained facts. Unsupported syntax is rejected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "operators": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "edges": {
+                  "type": "string"
+                },
+                "output": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "large_small_star"
+                },
+                "vertices": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "vertices",
+                "edges",
+                "output"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rules": {
+            "type": "string"
+          },
+          "schemas": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "items": {
+                    "enum": [
+                      "int",
+                      "string"
+                    ]
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "input": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "input",
+                "fields"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "rules",
+          "schemas"
+        ],
+        "type": "object"
+      },
+      "name": "lemmalog_install_rules"
+    },
+    {
+      "description": "Transactionally insert or delete input facts with set semantics.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "op": {
+                  "enum": [
+                    "insert",
+                    "delete"
+                  ]
+                },
+                "predicate": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "op",
+                "predicate",
+                "values"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "type": "object"
+      },
+      "name": "apply_changes"
+    },
+    {
+      "description": "Dump a declared output relation at the last completed transaction. Returns DDlog row text.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "predicate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "predicate"
+        ],
+        "type": "object"
+      },
+      "name": "lemmalog_query"
+    },
+    {
+      "description": "Read direct variable-binding witnesses for a zero-based ordinary rule index. Typed operators have no Evidence row. Not recursive provenance.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "lemmalog_why"
+    },
+    {
+      "description": "Discover operator-registered operations. Each takes and returns a string; providers execute outside DDlog.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "name": "agent_operations"
+    },
+    {
+      "description": "Select a registered operation. Author rules consuming agent_result(entity:string, revision:int, output:string). The runtime generates private request/response relations and freshness joins.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "string"
+          },
+          "schemas": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "operation",
+          "rules",
+          "schemas"
+        ],
+        "type": "object"
+      },
+      "name": "install_agent_program"
+    },
+    {
+      "description": "Submit a versioned input; identity includes operation version, entity, revision and exact payload. Same revision cannot change payload.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entity",
+          "revision",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "name": "submit_agent_input"
+    },
+    {
+      "description": "Admit external work once per session. Stale or already claimed requests are rejected. No automatic replay after uncertain outcomes.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "name": "claim_agent_request"
+    },
+    {
+      "description": "Record the external worker's response. Stale replies are retained but never join current outputs; conflicting responses are rejected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "output": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "output"
+        ],
+        "type": "object"
+      },
+      "name": "complete_agent_request"
+    },
+    {
+      "description": "Inspect per-request identity, status and freshness. State is session-local, not durable.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "name": "agent_request_status"
+    },
+    {
+      "description": "List saved processors ordered by stable identity, with bounded keyset pagination. Pass next_cursor as after; concurrent changes do not form a snapshot. Archived entries are omitted unless include_archived is true.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "include_archived": {
+            "default": false,
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "processor_list"
+    },
+    {
+      "description": "Case-insensitive literal substring search across identity, version and compact authored definition JSON. Same pagination and archive rules as processor_list; empty query lists all.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "include_archived": {
+            "default": false,
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "name": "processor_search"
+    },
+    {
+      "description": "Conditionally archive using both the expected code version and lifecycle revision. Retains code/lineage and existing instances/composition references. Same-state at current revision is a no-op; stale revisions conflict.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_version": {
+            "type": "string"
+          },
+          "processor_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id",
+          "expected_version",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
+      "name": "processor_archive"
+    },
+    {
+      "description": "Conditionally restore an archived identity to active discovery and new use, using its expected code version and lifecycle revision. Preserves versions/pins and does not compile or run. Same-state at current revision is a no-op; stale revisions conflict.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_version": {
+            "type": "string"
+          },
+          "processor_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id",
+          "expected_version",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
+      "name": "processor_restore"
+    },
+    {
+      "description": "Validate and save a program under a new stable identity. Supply rules or a composition manifest referencing exact immutable pure program versions, including other composed programs. Returns resolved dependencies and witness origins. Does not compile or activate a graph.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "definition": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "interface": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "inputs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "outputs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "inputs",
+                      "outputs"
+                    ],
+                    "type": "object"
+                  },
+                  "operation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "version",
+                      "description"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "operators": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "edges": {
+                          "type": "string"
+                        },
+                        "output": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "large_small_star"
+                        },
+                        "vertices": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertices",
+                        "edges",
+                        "output"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "rules": {
+                    "type": "string"
+                  },
+                  "schemas": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "rules",
+                  "schemas"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "composition": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "node": {
+                                  "type": "string"
+                                },
+                                "relation": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "relation"
+                              ],
+                              "type": "object"
+                            },
+                            "to": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "node": {
+                                  "type": "string"
+                                },
+                                "relation": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "relation"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "inputs": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "fields": {
+                              "items": {
+                                "enum": [
+                                  "int",
+                                  "string"
+                                ]
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "targets": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "node": {
+                                    "type": "string"
+                                  },
+                                  "relation": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "node",
+                                  "relation"
+                                ],
+                                "type": "object"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "fields",
+                            "targets"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "object"
+                      },
+                      "nodes": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "processor_id": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "processor_id",
+                            "version"
+                          ],
+                          "type": "object"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      },
+                      "outputs": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "relation": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "relation"
+                          ],
+                          "type": "object"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "nodes",
+                      "inputs",
+                      "bindings",
+                      "outputs"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "composition"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "git_provenance": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "type": "object"
+      },
+      "name": "processor_create"
+    },
+    {
+      "description": "Validate syntax and types, then save a definition and move current only if expected_version matches. Does not activate a graph.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "definition": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "interface": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "inputs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "outputs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "inputs",
+                      "outputs"
+                    ],
+                    "type": "object"
+                  },
+                  "operation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "version",
+                      "description"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "operators": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "edges": {
+                          "type": "string"
+                        },
+                        "output": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "large_small_star"
+                        },
+                        "vertices": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertices",
+                        "edges",
+                        "output"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "rules": {
+                    "type": "string"
+                  },
+                  "schemas": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "rules",
+                  "schemas"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "composition": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "node": {
+                                  "type": "string"
+                                },
+                                "relation": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "relation"
+                              ],
+                              "type": "object"
+                            },
+                            "to": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "node": {
+                                  "type": "string"
+                                },
+                                "relation": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "relation"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "inputs": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "fields": {
+                              "items": {
+                                "enum": [
+                                  "int",
+                                  "string"
+                                ]
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "targets": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "node": {
+                                    "type": "string"
+                                  },
+                                  "relation": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "node",
+                                  "relation"
+                                ],
+                                "type": "object"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "fields",
+                            "targets"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "object"
+                      },
+                      "nodes": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "processor_id": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "processor_id",
+                            "version"
+                          ],
+                          "type": "object"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      },
+                      "outputs": {
+                        "additionalProperties": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "node": {
+                              "type": "string"
+                            },
+                            "relation": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "relation"
+                          ],
+                          "type": "object"
+                        },
+                        "minProperties": 1,
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "nodes",
+                      "inputs",
+                      "bindings",
+                      "outputs"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "composition"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "expected_version": {
+            "type": "string"
+          },
+          "git_provenance": {
+            "type": "object"
+          },
+          "processor_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id",
+          "expected_version",
+          "definition"
+        ],
+        "type": "object"
+      },
+      "name": "processor_publish"
+    },
+    {
+      "description": "Create a new processor identity referencing an exact source version as lineage.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "git_provenance": {
+            "type": "object"
+          },
+          "processor_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "name": "processor_fork"
+    },
+    {
+      "description": "Read an immutable version; omitted version resolves current once.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "processor_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id"
+        ],
+        "type": "object"
+      },
+      "name": "processor_get"
+    },
+    {
+      "description": "Compile, activate and pin a program version in a fresh instance. A composition runs as one graph; current pointer updates cannot change it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "processor_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "processor_id"
+        ],
+        "type": "object"
+      },
+      "name": "processor_install"
+    }
+  ]
+}

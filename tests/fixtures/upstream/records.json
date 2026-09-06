@@ -1,0 +1,585 @@
+{
+  "nested": {
+    "composition": {
+      "dependencies": {
+        "graph": {
+          "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+          "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+        },
+        "graph.graph": {
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        }
+      },
+      "generated_source_sha256": "9f31f9f34970ec7bf0d4a87a352d50491c632f00811ee7e45b127eebeecfbe2d",
+      "inputs": {
+        "edges": "Input_edges",
+        "vertices": "Input_vertices"
+      },
+      "nodes": {
+        "graph": {
+          "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+          "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+        }
+      },
+      "outputs": {
+        "labels": "Output_labels"
+      },
+      "relations": {
+        "Composite0_Input_edges": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": "edges",
+          "kind": "external_input",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph"
+        },
+        "Composite0_Input_vertices": {
+          "fields": [
+            "int"
+          ],
+          "input": "vertices",
+          "kind": "external_input",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph"
+        },
+        "Composite0_Output_labels": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "from": {
+            "node": "graph.graph",
+            "relation": "labels"
+          },
+          "kind": "external_output",
+          "output": "labels",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph"
+        },
+        "Input_edges": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": "edges",
+          "kind": "external_input",
+          "owner": null,
+          "scope": ""
+        },
+        "Input_vertices": {
+          "fields": [
+            "int"
+          ],
+          "input": "vertices",
+          "kind": "external_input",
+          "owner": null,
+          "scope": ""
+        },
+        "Module1_edges": {
+          "kind": "processor_relation",
+          "node": "graph.graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "edges",
+          "schema": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "input": true
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Module1_labels": {
+          "kind": "processor_relation",
+          "node": "graph.graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "labels",
+          "schema": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "input": false
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Module1_vertices": {
+          "kind": "processor_relation",
+          "node": "graph.graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "vertices",
+          "schema": {
+            "fields": [
+              "int"
+            ],
+            "input": true
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Output_labels": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "from": {
+            "node": "graph",
+            "relation": "labels"
+          },
+          "kind": "external_output",
+          "output": "labels",
+          "owner": null,
+          "scope": ""
+        }
+      },
+      "rules": [
+        {
+          "input": "edges",
+          "kind": "input_binding",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph",
+          "to": {
+            "node": "graph.graph",
+            "relation": "edges"
+          }
+        },
+        {
+          "input": "vertices",
+          "kind": "input_binding",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph",
+          "to": {
+            "node": "graph.graph",
+            "relation": "vertices"
+          }
+        },
+        {
+          "from": {
+            "node": "graph.graph",
+            "relation": "labels"
+          },
+          "kind": "output_binding",
+          "output": "labels",
+          "owner": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          },
+          "scope": "graph"
+        },
+        {
+          "input": "edges",
+          "kind": "input_binding",
+          "owner": null,
+          "scope": "",
+          "to": {
+            "node": "graph",
+            "relation": "edges"
+          }
+        },
+        {
+          "input": "vertices",
+          "kind": "input_binding",
+          "owner": null,
+          "scope": "",
+          "to": {
+            "node": "graph",
+            "relation": "vertices"
+          }
+        },
+        {
+          "from": {
+            "node": "graph",
+            "relation": "labels"
+          },
+          "kind": "output_binding",
+          "output": "labels",
+          "owner": null,
+          "scope": ""
+        }
+      ]
+    },
+    "content_sha256": "c4779c5af7b16400c744cbcf06fdfab52894d04292230389a0899b99d5b2cb52",
+    "created_at_unix_ms": 1788652894805,
+    "definition": {
+      "composition": {
+        "bindings": [],
+        "inputs": {
+          "edges": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "targets": [
+              {
+                "node": "graph",
+                "relation": "edges"
+              }
+            ]
+          },
+          "vertices": {
+            "fields": [
+              "int"
+            ],
+            "targets": [
+              {
+                "node": "graph",
+                "relation": "vertices"
+              }
+            ]
+          }
+        },
+        "nodes": {
+          "graph": {
+            "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+            "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+          }
+        },
+        "outputs": {
+          "labels": {
+            "node": "graph",
+            "relation": "labels"
+          }
+        }
+      }
+    },
+    "format_version": 1,
+    "git_provenance": null,
+    "lineage": null,
+    "processor_id": "processor_d27e6d76c6703fc3d498f7472356ddf4",
+    "validation": {
+      "ddlog_compilation_performed": false,
+      "supported_lowering_checked": true,
+      "syntax_checked": true,
+      "types_checked": true
+    },
+    "version": "sha256:c4779c5af7b16400c744cbcf06fdfab52894d04292230389a0899b99d5b2cb52"
+  },
+  "pure": {
+    "content_sha256": "0a9c8173319f8107f9ad2c37446de12021176145edc6c7fbe2862dfac4a9c657",
+    "created_at_unix_ms": 1788652894656,
+    "definition": {
+      "operation": null,
+      "rules": "visible(X) :- item(X).",
+      "schemas": {
+        "item": {
+          "fields": [
+            "string"
+          ],
+          "input": true
+        },
+        "visible": {
+          "fields": [
+            "string"
+          ],
+          "input": false
+        }
+      }
+    },
+    "format_version": 1,
+    "git_provenance": null,
+    "lineage": null,
+    "processor_id": "processor_94a3652e1247018b2ba3249e8945e936",
+    "validation": {
+      "ddlog_compilation_performed": false,
+      "supported_lowering_checked": true,
+      "syntax_checked": true,
+      "types_checked": true
+    },
+    "version": "sha256:0a9c8173319f8107f9ad2c37446de12021176145edc6c7fbe2862dfac4a9c657"
+  },
+  "registered": {
+    "content_sha256": "9837a519f04b5ce0182d6492e6d322ef6ad61d79bc1fea857912d02ce9d87c1c",
+    "created_at_unix_ms": 1788652894741,
+    "definition": {
+      "operation": {
+        "description": "Synthetic review operation",
+        "name": "review",
+        "version": "fixture-v1"
+      },
+      "rules": "reviewed(E,R,O) :- agent_result(E,R,O).",
+      "schemas": {
+        "reviewed": {
+          "fields": [
+            "string",
+            "int",
+            "string"
+          ],
+          "input": false
+        }
+      }
+    },
+    "format_version": 1,
+    "git_provenance": null,
+    "lineage": null,
+    "processor_id": "processor_e6952bf74116c7496625b9011b33742d",
+    "validation": {
+      "ddlog_compilation_performed": false,
+      "supported_lowering_checked": true,
+      "syntax_checked": true,
+      "types_checked": true
+    },
+    "version": "sha256:9837a519f04b5ce0182d6492e6d322ef6ad61d79bc1fea857912d02ce9d87c1c"
+  },
+  "star": {
+    "content_sha256": "75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226",
+    "created_at_unix_ms": 1788652894696,
+    "definition": {
+      "interface": {
+        "inputs": [
+          "vertices",
+          "edges"
+        ],
+        "outputs": [
+          "labels"
+        ]
+      },
+      "operation": null,
+      "operators": [
+        {
+          "edges": "edges",
+          "output": "labels",
+          "type": "large_small_star",
+          "vertices": "vertices"
+        }
+      ],
+      "rules": "",
+      "schemas": {
+        "edges": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": true
+        },
+        "labels": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": false
+        },
+        "vertices": {
+          "fields": [
+            "int"
+          ],
+          "input": true
+        }
+      }
+    },
+    "format_version": 1,
+    "git_provenance": null,
+    "lineage": null,
+    "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+    "validation": {
+      "ddlog_compilation_performed": false,
+      "supported_lowering_checked": true,
+      "syntax_checked": true,
+      "types_checked": true
+    },
+    "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+  },
+  "wrapper": {
+    "composition": {
+      "dependencies": {
+        "graph": {
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        }
+      },
+      "generated_source_sha256": "051f5bcce29e04035df361ac77a6a65fd54a28f77d01b876f7c877437f5c05db",
+      "inputs": {
+        "edges": "Input_edges",
+        "vertices": "Input_vertices"
+      },
+      "nodes": {
+        "graph": {
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        }
+      },
+      "outputs": {
+        "labels": "Output_labels"
+      },
+      "relations": {
+        "Input_edges": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "input": "edges",
+          "kind": "external_input",
+          "owner": null,
+          "scope": ""
+        },
+        "Input_vertices": {
+          "fields": [
+            "int"
+          ],
+          "input": "vertices",
+          "kind": "external_input",
+          "owner": null,
+          "scope": ""
+        },
+        "Module0_edges": {
+          "kind": "processor_relation",
+          "node": "graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "edges",
+          "schema": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "input": true
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Module0_labels": {
+          "kind": "processor_relation",
+          "node": "graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "labels",
+          "schema": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "input": false
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Module0_vertices": {
+          "kind": "processor_relation",
+          "node": "graph",
+          "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+          "relation": "vertices",
+          "schema": {
+            "fields": [
+              "int"
+            ],
+            "input": true
+          },
+          "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+        },
+        "Output_labels": {
+          "fields": [
+            "int",
+            "int"
+          ],
+          "from": {
+            "node": "graph",
+            "relation": "labels"
+          },
+          "kind": "external_output",
+          "output": "labels",
+          "owner": null,
+          "scope": ""
+        }
+      },
+      "rules": [
+        {
+          "input": "edges",
+          "kind": "input_binding",
+          "owner": null,
+          "scope": "",
+          "to": {
+            "node": "graph",
+            "relation": "edges"
+          }
+        },
+        {
+          "input": "vertices",
+          "kind": "input_binding",
+          "owner": null,
+          "scope": "",
+          "to": {
+            "node": "graph",
+            "relation": "vertices"
+          }
+        },
+        {
+          "from": {
+            "node": "graph",
+            "relation": "labels"
+          },
+          "kind": "output_binding",
+          "output": "labels",
+          "owner": null,
+          "scope": ""
+        }
+      ]
+    },
+    "content_sha256": "3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1",
+    "created_at_unix_ms": 1788652894773,
+    "definition": {
+      "composition": {
+        "bindings": [],
+        "inputs": {
+          "edges": {
+            "fields": [
+              "int",
+              "int"
+            ],
+            "targets": [
+              {
+                "node": "graph",
+                "relation": "edges"
+              }
+            ]
+          },
+          "vertices": {
+            "fields": [
+              "int"
+            ],
+            "targets": [
+              {
+                "node": "graph",
+                "relation": "vertices"
+              }
+            ]
+          }
+        },
+        "nodes": {
+          "graph": {
+            "processor_id": "processor_f73af36626b286b84d4d7ebf3ec6becf",
+            "version": "sha256:75e4f50eae99a217292803f8bb9c41752fd1ecd193c3ebd5b6a0568ca9b4a226"
+          }
+        },
+        "outputs": {
+          "labels": {
+            "node": "graph",
+            "relation": "labels"
+          }
+        }
+      }
+    },
+    "format_version": 1,
+    "git_provenance": null,
+    "lineage": null,
+    "processor_id": "processor_a5061511ae805a164da144671ba62ec2",
+    "validation": {
+      "ddlog_compilation_performed": false,
+      "supported_lowering_checked": true,
+      "syntax_checked": true,
+      "types_checked": true
+    },
+    "version": "sha256:3dbc92487f05ba94199713e681f2ed05ecacae35cc3f62c86fcfb56281d0fad1"
+  }
+}

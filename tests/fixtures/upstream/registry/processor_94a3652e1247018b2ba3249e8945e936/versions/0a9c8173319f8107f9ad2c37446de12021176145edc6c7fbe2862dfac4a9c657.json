@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "processor_id": "processor_94a3652e1247018b2ba3249e8945e936",
+  "version": "sha256:0a9c8173319f8107f9ad2c37446de12021176145edc6c7fbe2862dfac4a9c657",
+  "content_sha256": "0a9c8173319f8107f9ad2c37446de12021176145edc6c7fbe2862dfac4a9c657",
+  "created_at_unix_ms": 1788652894656,
+  "git_provenance": null,
+  "lineage": null,
+  "definition": {
+    "rules": "visible(X) :- item(X).",
+    "schemas": {
+      "item": {
+        "fields": [
+          "string"
+        ],
+        "input": true
+      },
+      "visible": {
+        "fields": [
+          "string"
+        ],
+        "input": false
+      }
+    },
+    "operation": null
+  },
+  "validation": {
+    "syntax_checked": true,
+    "types_checked": true,
+    "supported_lowering_checked": true,
+    "ddlog_compilation_performed": false
+  }
+}
