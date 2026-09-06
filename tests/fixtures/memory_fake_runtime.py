@@ -13,6 +13,9 @@ arity = {name: len(re.findall(r"f\d+:", fields)) for name, fields in
 facts, staged = {}, {}
 for raw in sys.stdin:
     command = raw.strip()
+    if command.startswith(("commit", "dump")):
+        with (control / "commands").open("a") as log:
+            log.write(command + "\n")
     if command == "start;":
         staged = {name: set(rows) for name, rows in facts.items()}
     elif command.startswith(("insert R_", "delete R_")):
@@ -27,12 +30,17 @@ for raw in sys.stdin:
             os._exit(42)
         if (control / "fail_replay").exists() and command == "commit;":
             print("error: simulated replay rejection", flush=True)
+        if (control / "large_deltas").exists() and command == "commit dump_changes;":
+            for i in range(100):
+                print('R_unrelated{.f0 = "' + "x" * 65536 + '"}: +1', flush=True)
     elif command.startswith("dump R_"):
         name = command[len("dump R_"):-1]
         if (control / "malformed_query").exists():
             print("unexpected native output", flush=True)
+        elif (control / "oversized_query").exists():
+            print('R_' + name + '{.f0 = 1, .f1 = "' + "x" * (4 * 1024 * 1024) + '"}', flush=True)
         else:
-            for row in sorted(facts.get("source", set())):
+            for row in sorted(facts.get("unused" if name == "unrelated" else "source", set())):
                 values = json.loads(row)[:arity[name]]
                 fields = ", ".join(f".f{i} = {json.dumps(v, ensure_ascii=False)}" for i, v in enumerate(values))
                 print("R_" + name + "{" + fields + "}", flush=True)

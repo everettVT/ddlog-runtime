@@ -2,9 +2,16 @@
 
 The runtime library owns acknowledged input state. `Backend::export_inputs()`
 returns every input relation, including empty ones, as typed rows.
-`query_typed(predicate)` validates and decodes native output records. Existing
-string query APIs remain available. Native responses remain bounded to 4 MiB;
-typed reads do not introduce pagination or push down caller-side filters.
+`query_typed(predicate)` validates and decodes complete native output records.
+Its existing string transport has a 4 MiB aggregate response limit; exceeding
+that limit disables the owner because the command is no longer synchronized.
+Use `query_typed_bounded(predicate, &BoundedQuery)` for bounded retrieval from
+larger maintained outputs. See [bounded output reads](bounded-reads.md).
+`apply_without_deltas(changes)` commits the same input transaction without
+transporting unrelated output deltas. Candidate installation and checkpoint
+replay also use plain commits, so their acknowledgements do not grow with the
+derived output snapshot. Existing string queries and delta-returning mutation
+APIs remain available with their original contracts.
 
 `Backend::install_composition(&mut self, registry: &ProcessorRegistry,
 manifest: &CompositionManifest) -> Result<CompositionResolution, String>` resolves

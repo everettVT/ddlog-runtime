@@ -2,9 +2,10 @@
 //! Controlled transport/compiler fixtures, never claimed as native DDlog proof.
 use ddlog_runtime::composition::CompositionManifest;
 use ddlog_runtime::registry::{ProcessorDefinition, ProcessorRegistry, ProcessorVersion};
-use ddlog_runtime::Backend;
+use ddlog_runtime::{Backend, BoundedQuery, MAX_QUERY_BYTES, MAX_QUERY_ROWS};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -470,4 +471,270 @@ fn failed_publication_does_not_replace_target_or_leave_partial_file() {
         .file_name()
         .to_string_lossy()
         .ends_with(".tmp")));
+}
+
+#[test]
+fn bounded_pages_filter_exact_positions_account_bytes_and_continue_without_gaps() {
+    let fixture = Fixture::new();
+    let mut live = initial(&fixture);
+    live.apply_without_deltas(&json!([
+        {"op":"insert","predicate":"source","values":[1,"a\n\"b\"\\é"]},
+        {"op":"insert","predicate":"source","values":[2,"other"]},
+        {"op":"insert","predicate":"source","values":[3,"a\n\"b\"\\é"]}
+    ]))
+    .unwrap();
+    let revision = live.revision();
+    let expected = live
+        .query_typed("echo")
+        .unwrap()
+        .into_iter()
+        .filter(|row| row[1] == json!("a\n\"b\"\\é"))
+        .collect::<Vec<_>>();
+    let mut query = BoundedQuery {
+        filters: BTreeMap::from([(1, json!("a\n\"b\"\\é"))]),
+        max_rows: 1,
+        ..Default::default()
+    };
+    let mut actual = Vec::new();
+    for index in 0..expected.len() {
+        let page = live.query_typed_bounded("echo", &query).unwrap();
+        assert_eq!(page.rows, vec![expected[index].clone()]);
+        assert_eq!(page.bytes, serde_json::to_vec(&page.rows).unwrap().len());
+        assert_eq!(page.revision, revision);
+        assert_eq!(page.truncated, index + 1 < expected.len());
+        assert_eq!(page.truncated, page.continuation.is_some());
+        actual.extend(page.rows);
+        // Cursors survive serialization, but remain opaque to their caller.
+        query.continuation = serde_json::from_value(json!(page.continuation)).unwrap();
+    }
+    assert_eq!(actual, expected);
+    assert_eq!(live.revision(), revision);
+    query.continuation = None;
+    query.max_rows = 10;
+    query.max_bytes = serde_json::to_vec(&vec![expected[0].clone()])
+        .unwrap()
+        .len();
+    let first = live.query_typed_bounded("echo", &query).unwrap();
+    assert_eq!(first.rows.len(), 1);
+    assert_eq!(first.bytes, query.max_bytes);
+    assert!(first.truncated);
+    query.continuation = first.continuation;
+    query.max_bytes = MAX_QUERY_BYTES;
+    let rest = live.query_typed_bounded("echo", &query).unwrap();
+    assert_eq!(rest.rows, expected[1..]);
+    assert!(!rest.truncated);
+    query.continuation = None;
+    query.filters = BTreeMap::from([(0, json!(2)), (1, json!("other"))]);
+    assert_eq!(
+        live.query_typed_bounded("echo", &query).unwrap().rows,
+        vec![vec![json!(2), json!("other")]]
+    );
+    query.filters.insert(1, json!("Other"));
+    let empty = live.query_typed_bounded("echo", &query).unwrap();
+    assert!(empty.rows.is_empty());
+    assert_eq!(empty.bytes, 2);
+    assert!(!empty.truncated);
+}
+
+#[test]
+fn bounded_read_errors_drain_without_poisoning_owner_and_cursors_bind_snapshot() {
+    let fixture = Fixture::new();
+    let mut live = initial(&fixture);
+    live.apply_without_deltas(&json!([
+        {"op":"insert","predicate":"source","values":[9,"other"]}
+    ]))
+    .unwrap();
+    let query = BoundedQuery {
+        max_rows: 1,
+        ..Default::default()
+    };
+    let cursor = live
+        .query_typed_bounded("echo", &query)
+        .unwrap()
+        .continuation;
+    assert!(cursor.is_some());
+    let mut continued = query.clone();
+    continued.continuation = cursor;
+    let mut changed = continued.clone();
+    changed.filters.insert(0, json!(9));
+    assert!(live
+        .query_typed_bounded("echo", &changed)
+        .unwrap_err()
+        .contains("Continuation"));
+    let mut small = query.clone();
+    small.max_bytes = 2;
+    assert!(live
+        .query_typed_bounded("echo", &small)
+        .unwrap_err()
+        .contains("Matching row requires"));
+    for flag in ["malformed_query", "oversized_query"] {
+        fixture.flag(flag);
+        let error = live.query_typed_bounded("echo", &query).unwrap_err();
+        if flag == "oversized_query" {
+            assert!(error.contains("record exceeded"), "{error}");
+        }
+        fixture.unflag(flag);
+        assert_eq!(live.health(), "ready");
+        assert_eq!(
+            live.query_typed_bounded("echo", &continued).unwrap().rows,
+            vec![vec![json!(9), json!("other")]]
+        );
+    }
+    let path = fixture.root.join("bounded-checkpoint.json");
+    live.save_checkpoint(&path, Value::Null).unwrap();
+    let mut restored = fixture.backend("other-owner");
+    restored.restore_checkpoint(&path).unwrap();
+    assert_eq!(restored.revision(), live.revision());
+    assert!(restored
+        .query_typed_bounded("echo", &continued)
+        .unwrap_err()
+        .contains("Continuation"));
+    live.apply_without_deltas(&json!([])).unwrap();
+    assert!(live
+        .query_typed_bounded("echo", &continued)
+        .unwrap_err()
+        .contains("Continuation"));
+    assert_eq!(live.health(), "ready");
+}
+
+#[test]
+fn invalid_bounded_requests_fail_before_native_commands() {
+    let fixture = Fixture::new();
+    let mut live = initial(&fixture);
+    let commands = fs::read_to_string(fixture.root.join("commands")).unwrap();
+    for invalid in [
+        BoundedQuery {
+            max_rows: 0,
+            ..Default::default()
+        },
+        BoundedQuery {
+            max_rows: MAX_QUERY_ROWS + 1,
+            ..Default::default()
+        },
+        BoundedQuery {
+            max_bytes: 1,
+            ..Default::default()
+        },
+        BoundedQuery {
+            max_bytes: MAX_QUERY_BYTES + 1,
+            ..Default::default()
+        },
+        BoundedQuery {
+            filters: BTreeMap::from([(2, json!(1))]),
+            ..Default::default()
+        },
+        BoundedQuery {
+            filters: BTreeMap::from([(0, json!("1"))]),
+            ..Default::default()
+        },
+        BoundedQuery {
+            filters: BTreeMap::from([(0, json!(1.0))]),
+            ..Default::default()
+        },
+        BoundedQuery {
+            filters: BTreeMap::from([(1, Value::Null)]),
+            ..Default::default()
+        },
+    ] {
+        assert!(live.query_typed_bounded("echo", &invalid).is_err());
+    }
+    for predicate in ["source", "unknown", "echo; dump"] {
+        assert!(live
+            .query_typed_bounded(predicate, &BoundedQuery::default())
+            .is_err());
+    }
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("commands")).unwrap(),
+        commands
+    );
+    assert_eq!(live.health(), "ready");
+}
+
+#[test]
+fn large_current_and_unrelated_outputs_allow_bounded_reads_replacement_and_reopen() {
+    let fixture = Fixture::new();
+    let mut live = fixture.backend("large");
+    let mut schema = schemas();
+    schema["unrelated"] = json!({"input":false,"fields":["string"]});
+    let rules = "echo(N,S) :- source(N,S). unrelated(S) :- unused(S).";
+    live.install(rules, schema.clone()).unwrap();
+    fixture.flag("large_deltas");
+    fs::write(fixture.root.join("commands"), "").unwrap();
+    let payload = "x".repeat(65536);
+    let changes: Vec<_> = (0..100)
+        .flat_map(|index| {
+            [
+                json!({"op":"insert","predicate":"source","values":[index,payload]}),
+                json!({"op":"insert","predicate":"unused","values":[format!("{index}:{payload}")]}),
+            ]
+        })
+        .collect();
+    // Each relation's native snapshot exceeds the old aggregate response cap.
+    assert!(100 * payload.len() > MAX_QUERY_BYTES);
+    let receipt = live.apply_without_deltas(&json!(changes)).unwrap();
+    assert_eq!(receipt["revision"], live.revision());
+    let selected = BoundedQuery {
+        filters: BTreeMap::from([(0, json!(50))]),
+        max_rows: 1,
+        max_bytes: 128 * 1024,
+        continuation: None,
+    };
+    assert_eq!(
+        live.query_typed_bounded("echo", &selected).unwrap().rows,
+        vec![vec![json!(50), json!(payload)]]
+    );
+    let first = live
+        .query_typed_bounded(
+            "echo",
+            &BoundedQuery {
+                max_rows: 1,
+                max_bytes: 128 * 1024,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(first.truncated);
+    assert_eq!(live.health(), "ready");
+    // Candidate replay and checkpoint restore also use plain commit, so neither
+    // transports all derived deltas while acknowledging large retained inputs.
+    live.install(rules, schema).unwrap();
+    let path = fixture.root.join("large-checkpoint.json");
+    live.save_checkpoint(&path, json!({"large":true})).unwrap();
+    let mut reopened = fixture.backend("large-reopened");
+    assert_eq!(
+        reopened.restore_checkpoint(&path).unwrap(),
+        json!({"large":true})
+    );
+    assert_eq!(reopened.revision(), live.revision());
+    let page = reopened.query_typed_bounded("echo", &selected).unwrap();
+    assert_eq!(page.rows, vec![vec![json!(50), json!(payload)]]);
+    assert!(!page.truncated);
+    assert_eq!(reopened.health(), "ready");
+    let commands = fs::read_to_string(fixture.root.join("commands")).unwrap();
+    assert!(!commands.contains("dump_changes"));
+    assert!(
+        commands
+            .lines()
+            .all(|line| line == "commit;" || line == "dump R_echo;"),
+        "{commands}"
+    );
+}
+
+#[test]
+fn lost_plain_commit_ack_does_not_advance_inputs_or_allow_checkpoint() {
+    let fixture = Fixture::new();
+    let mut live = initial(&fixture);
+    let revision = live.revision();
+    fixture.flag("die_on_commit");
+    assert!(live
+        .apply_without_deltas(&json!([
+            {"op":"insert","predicate":"source","values":[1,"uncertain"]}
+        ]))
+        .is_err());
+    assert_eq!(live.revision(), revision);
+    assert_eq!(live.health(), "failed");
+    assert!(live.export_inputs().is_err());
+    assert!(live
+        .save_checkpoint(&fixture.root.join("uncertain.json"), Value::Null)
+        .is_err());
 }
