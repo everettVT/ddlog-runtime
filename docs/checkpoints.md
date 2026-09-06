@@ -23,6 +23,10 @@ metadata into an integrity-bound JSON file. Publication uses an exclusive
 temporary file, file sync, rename, and directory sync. Check the result before
 claiming durability. If directory sync fails after rename, reconcile the
 target; an error does not guarantee the previous file remains selected.
+Finite floating-point metadata retains its exact value, including signed zero.
+Before publication, the complete serialized checkpoint must pass the restore
+parser and digest check. Metadata exceeding the parser's nesting limit is
+rejected without replacing an existing checkpoint.
 
 `restore_checkpoint(path)` requires a fresh backend and returns the metadata.
 It checks the format, digest, declarations, input inventory, field types and

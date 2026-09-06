@@ -204,6 +204,98 @@ fn checkpoint_roundtrip_preserves_typed_inputs_empty_relations_and_revision() {
 }
 
 #[test]
+fn checkpoint_roundtrip_preserves_nested_float_metadata_bits() {
+    let fixture = Fixture::new();
+    let mut live = initial(&fixture);
+    let floats = [
+        0.9999999999999999,
+        2.291712365432881e-9,
+        -0.9999999999999999,
+        -2.291712365432881e-9,
+        f64::MAX,
+        f64::MIN,
+        f64::MIN_POSITIVE,
+        -f64::MIN_POSITIVE,
+        f64::from_bits(1),
+        -f64::from_bits(1),
+        0.0,
+        -0.0,
+    ];
+    let metadata = json!({"opaque":{"measurements":floats.map(|value| json!({"value":value}))}});
+    let path = fixture.root.join("float-checkpoint.json");
+    live.save_checkpoint(&path, metadata.clone()).unwrap();
+    let mut restored = fixture.backend("restored-floats");
+    let actual = restored.restore_checkpoint(&path).unwrap();
+    assert_eq!(actual, metadata);
+    for (index, expected) in floats.iter().enumerate() {
+        assert_eq!(
+            actual["opaque"]["measurements"][index]["value"]
+                .as_f64()
+                .unwrap()
+                .to_bits(),
+            expected.to_bits(),
+            "float at index {index} must retain its exact representation"
+        );
+    }
+    assert_eq!(
+        restored.export_inputs().unwrap(),
+        live.export_inputs().unwrap()
+    );
+    assert_eq!(
+        restored.query_typed("echo").unwrap(),
+        live.query_typed("echo").unwrap()
+    );
+}
+
+#[test]
+fn checkpoint_restores_unchanged_format_one_float_bytes() {
+    // Captured before enabling float_roundtrip: retain the exact JSON and digest.
+    let original = r#"{"sha256":"66de2fcb6b0bdbf50f1b0ba39823be025fff9bc781f78fe196176afb017393b3","state":{"format_version":1,"source":"input relation R_inp(f0: signed<64>)\noutput relation R_out(f0: signed<64>)\noutput relation Evidence0(v_X: signed<64>)\nEvidence0(v_X) :- R_inp(v_X).\nR_out(v_X) :- Evidence0(v_X).\n","schemas":{"inp":{"input":true,"fields":["int"]},"out":{"input":false,"fields":["int"]}},"inputs":{"inp":[]},"revision":1,"program_version":1,"metadata":{"confidence":2.291712365432881e-9}}}"#;
+    let fixture = Fixture::new();
+    let path = fixture.root.join("original-checkpoint.json");
+    fs::write(&path, original).unwrap();
+    let mut restored = fixture.backend("restored-original");
+    assert_eq!(
+        restored.restore_checkpoint(&path).unwrap(),
+        json!({"confidence":2.291712365432881e-9})
+    );
+    assert!(restored.export_inputs().unwrap()["inp"].is_empty());
+    assert_eq!(fs::read(&path).unwrap(), original.as_bytes());
+    restored
+        .save_checkpoint(&path, json!({"confidence":2.291712365432881e-9}))
+        .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), original.as_bytes());
+}
+
+#[test]
+fn unreadable_metadata_is_rejected_before_replacing_a_valid_checkpoint() {
+    let fixture = Fixture::new();
+    let live = initial(&fixture);
+    let path = fixture.root.join("checkpoint.json");
+    let metadata = json!({"opaque":"preserved"});
+    live.save_checkpoint(&path, metadata.clone()).unwrap();
+    let original = fs::read(&path).unwrap();
+    let mut deep_metadata = Value::Null;
+    for _ in 0..128 {
+        deep_metadata = Value::Array(vec![deep_metadata]);
+    }
+    let error = live.save_checkpoint(&path, deep_metadata).unwrap_err();
+    assert!(error.contains("recursion limit"), "{error}");
+    assert_eq!(fs::read(&path).unwrap(), original);
+    assert!(!fs::read_dir(&fixture.root).unwrap().any(|entry| entry
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .ends_with(".tmp")));
+    let mut restored = fixture.backend("restored-preserved");
+    assert_eq!(restored.restore_checkpoint(&path).unwrap(), metadata);
+    assert_eq!(
+        restored.export_inputs().unwrap(),
+        live.export_inputs().unwrap()
+    );
+}
+
+#[test]
 fn derived_schema_edits_replay_inputs_and_failed_replacement_preserves_live_program() {
     let fixture = Fixture::new();
     let mut live = initial(&fixture);

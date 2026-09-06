@@ -37,6 +37,13 @@ fn digest(state: &State) -> Result<String> {
     let bytes = serde_json::to_vec(&canonical).map_err(|e| e.to_string())?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
+fn decode_checkpoint(bytes: &[u8]) -> Result<Checkpoint> {
+    let checkpoint: Checkpoint = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    if digest(&checkpoint.state)? != checkpoint.sha256 {
+        return Err("Checkpoint integrity digest mismatch".into());
+    }
+    Ok(checkpoint)
+}
 fn pure(schemas: &BTreeMap<String, Schema>) -> Result<()> {
     if schemas.keys().any(|name| name.starts_with("agent_")) {
         return Err("Registered-operation state cannot be checkpointed or restored; external outcomes require reconciliation".into());
@@ -152,6 +159,9 @@ impl Backend {
         if bytes.len() as u64 > MAX_BYTES {
             return Err("Checkpoint exceeds 64 MiB limit".into());
         }
+        // Opaque metadata must survive the same parser and digest verification
+        // as restore, including its recursion limit, before any file is touched.
+        decode_checkpoint(&bytes)?;
         let parent = path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -206,10 +216,7 @@ impl Backend {
         if bytes.len() as u64 > MAX_BYTES {
             return Err("Checkpoint exceeds 64 MiB limit".into());
         }
-        let checkpoint: Checkpoint = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-        if digest(&checkpoint.state)? != checkpoint.sha256 {
-            return Err("Checkpoint integrity digest mismatch".into());
-        }
+        let checkpoint = decode_checkpoint(&bytes)?;
         let facts = checkpoint.state.validate()?;
         // Stage in a separate owner; errors leave this backend untouched.
         let mut candidate = Backend::new(self.root.clone(), self.driver.clone());
