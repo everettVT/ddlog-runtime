@@ -59,7 +59,7 @@ export DDLOG_HOME=/absolute/ddlog-distribution
 ./target/debug/lemmalog-ddlog-mcp
 ```
 
-Configure the pinned native build environment described in [building](docs/building.md) before installation. No compiler or dependencies are installed implicitly.
+Use the [reproducible native bootstrap and smoke test](docs/building.md#reproducible-native-installation) before installing a program. No compiler or dependencies are installed implicitly.
 
 For independently attached same-user clients:
 

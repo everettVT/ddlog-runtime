@@ -1,0 +1,34 @@
+{
+  "scope": "Fresh compiler archive, Rust installation, Cargo home, vendor tree and target directory on existing macOS machine; host Rust/Cargo cache pre-existed.",
+  "bootstrap": {
+    "compiler_archive": "ddlog-v1.2.3-20211213235114-macOS.tar.gz",
+    "compiler_sha256": "65d3613bae6ff959e6159a4edf7c7f4eda1634defecb144dd0d9e71291e497a9",
+    "rust": "1.65.0",
+    "platform": [
+      "Darwin",
+      "arm64"
+    ],
+    "lock_sha256": {
+      "star.Cargo.lock": "6315b36aa9f3c909266ecc6ba1d1cfea036a073196bf6850e436386a5ec8ef27",
+      "program.Cargo.lock": "d43b755767fc3387d44995ea8d07fb9e7f2115db3162cab4cdde9a2b6333bf8b"
+    }
+  },
+  "smoke": {
+    "passed": true,
+    "artifact_mode": "fresh-compilation",
+    "host_sha256": "2a68e6971824511184e6d09a79bd69b230e05f8e565bea3a8fc869f843645ca5",
+    "checks": [
+      "install",
+      "insert-visible",
+      "retract-empty"
+    ],
+    "files": {
+      "build/instance-7f691e70d0bed3623adba5b4d118c1a3/build-1/program.dl": "d463a879be314cbf6af1cbbb317de9b5a2c514c8f4273e1ed42d468f3fcd66b3",
+      "build/instance-7f691e70d0bed3623adba5b4d118c1a3/build-1/program_cli": "7ceb4baacfad56975fc104ee986ae5577aaee802dd530893e45b8978a1ce13f4"
+    }
+  },
+  "star": {
+    "passed": true,
+    "snapshot_count": 98
+  }
+}

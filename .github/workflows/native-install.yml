@@ -1,0 +1,37 @@
+name: Native installation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'scripts/bootstrap-native.py'
+      - 'scripts/build-ddlog.sh'
+      - 'scripts/test-native-install.py'
+      - '.github/workflows/native-install.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build host
+        run: cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
+      - name: Install from pinned public inputs
+        run: python3 scripts/bootstrap-native.py "$RUNNER_TEMP/ddlog-native"
+      - name: Compile and exercise MCP
+        run: |
+          source "$RUNNER_TEMP/ddlog-native/env.sh"
+          python3 scripts/test-native-install.py "$RUNNER_TEMP/native-smoke"
+      - name: Compile and exercise bundled operator
+        run: |
+          source "$RUNNER_TEMP/ddlog-native/env.sh"
+          export LEMMALOG_DDLOG_MCP="$GITHUB_WORKSPACE/target/debug/lemmalog-ddlog-mcp"
+          export SHARED_TEST_TIMEOUT=600
+          export STAR_ARTIFACTS="$RUNNER_TEMP/native-star"
+          python3 scripts/test-large-small-star.py
+      - name: Report evidence and build errors
+        if: always()
+        run: |
+          find "$RUNNER_TEMP/native-smoke" "$RUNNER_TEMP/native-star" -type f \( -name receipt.json -o -name build.log -o -name stderr.log \) -exec sh -c 'echo "$1"; tail -80 "$1"' sh {} \; 2>/dev/null || true

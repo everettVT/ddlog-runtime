@@ -13,6 +13,12 @@ if [ -n "${DDLOG_CARGO_CONFIG:-}" ]; then
 fi
 if [ -n "${DDLOG_CARGO_LOCK:-}" ]; then
     cp "$DDLOG_CARGO_LOCK" Cargo.lock
+elif [ -n "${DDLOG_LOCK_DIR:-}" ]; then
+    if [ -d types/lemmalog_star ]; then
+        cp "$DDLOG_LOCK_DIR/star.Cargo.lock" Cargo.lock
+    else
+        cp "$DDLOG_LOCK_DIR/program.Cargo.lock" Cargo.lock
+    fi
 fi
 export CARGO_PROFILE_DEV_DEBUG=0
 export CARGO_INCREMENTAL=0
