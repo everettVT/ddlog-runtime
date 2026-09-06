@@ -8,6 +8,9 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SHARED_TEST_TIMEOUT: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Formatting and transport-free contracts
@@ -18,4 +21,5 @@ jobs:
         run: |
           cargo test --locked --workspace --all-features
           cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tests -p 'test_bridge_transport.py' -v
+          python3 -m unittest discover -s tests -p 'test_*.py' -v --failfast
