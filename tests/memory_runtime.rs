@@ -1,5 +1,7 @@
 #![cfg(unix)]
 //! Controlled transport/compiler fixtures, never claimed as native DDlog proof.
+use ddlog_runtime::composition::CompositionManifest;
+use ddlog_runtime::registry::{ProcessorDefinition, ProcessorRegistry, ProcessorVersion};
 use ddlog_runtime::Backend;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -67,6 +69,105 @@ fn rewrite_checkpoint(path: &Path, edit: impl FnOnce(&mut Value)) {
         Sha256::digest(serde_json::to_vec(&value["state"]).unwrap())
     ));
     fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+}
+
+fn leaf_definition(field: &str) -> ProcessorDefinition {
+    serde_json::from_value(json!({
+        "rules":"result(X) :- source(X).",
+        "schemas": {
+            "source":{"input":true,"fields":[field]},
+            "result":{"input":false,"fields":[field]}
+        },
+        "interface":{"inputs":["source"],"outputs":["result"]}
+    }))
+    .unwrap()
+}
+
+fn composition(first: &ProcessorVersion, second: &ProcessorVersion) -> CompositionManifest {
+    serde_json::from_value(json!({
+        "nodes": {
+            "first":{"processor_id":first.processor_id,"version":first.version},
+            "second":{"processor_id":second.processor_id,"version":second.version}
+        },
+        "inputs":{"input":{"fields":["string"],"targets":[{"node":"first","relation":"source"}]}},
+        "bindings":[{"from":{"node":"first","relation":"result"},"to":{"node":"second","relation":"source"}}],
+        "outputs":{"output":{"node":"second","relation":"result"}}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn composition_install_uses_exact_pins_and_roundtrips_checkpoint_inputs() {
+    let fixture = Fixture::new();
+    let registry = ProcessorRegistry::open(fixture.root.join("registry")).unwrap();
+    let leaf = registry.create(leaf_definition("string"), None).unwrap();
+    let manifest = composition(&leaf, &leaf);
+    let expected = registry.compile_composition(&manifest).unwrap();
+    // Move the current pointer to an incompatible definition before installation.
+    let next = registry
+        .publish(
+            &leaf.processor_id,
+            leaf_definition("int"),
+            &leaf.version,
+            None,
+        )
+        .unwrap();
+    assert_ne!(next.version, leaf.version);
+    let mut live = fixture.backend("composition");
+    let resolution = live.install_composition(&registry, &manifest).unwrap();
+    assert_eq!(resolution, expected.resolution);
+    assert_eq!(resolution.nodes, manifest.nodes);
+    assert_eq!(live.program_source(), expected.source);
+    assert_eq!(live.schemas(), &expected.schemas);
+    live.apply(&json!([{
+        "op":"insert","predicate":resolution.inputs["input"],"values":["retained"]
+    }]))
+    .unwrap();
+    let inputs = live.export_inputs().unwrap();
+    assert_eq!(
+        inputs[&resolution.inputs["input"]],
+        vec![vec![json!("retained")]]
+    );
+    let path = fixture.root.join("composition-checkpoint.json");
+    let metadata = json!({"composition":resolution});
+    live.save_checkpoint(&path, metadata.clone()).unwrap();
+    let mut restored = fixture.backend("restored-composition");
+    assert_eq!(restored.restore_checkpoint(&path).unwrap(), metadata);
+    assert_eq!(restored.export_inputs().unwrap(), inputs);
+    assert_eq!(restored.program_source(), live.program_source());
+    assert_eq!(restored.schemas(), live.schemas());
+    assert_eq!(restored.revision(), live.revision());
+    // This fixture checks installation, transport and replay, not composed rules.
+}
+
+#[test]
+fn composition_resolution_errors_preserve_existing_inputs_before_compilation() {
+    let fixture = Fixture::new();
+    let registry = ProcessorRegistry::open(fixture.root.join("registry")).unwrap();
+    let text = registry.create(leaf_definition("string"), None).unwrap();
+    let integer = registry.create(leaf_definition("int"), None).unwrap();
+    let mut live = initial(&fixture);
+    let inputs = live.export_inputs().unwrap();
+    let source = live.program_source().to_string();
+    let schemas = live.schemas().clone();
+    let revision = live.revision();
+    let mut missing = composition(&text, &text);
+    missing.nodes.get_mut("first").unwrap().version = format!("sha256:{}", "0".repeat(64));
+    let mismatched = composition(&text, &integer);
+    for (manifest, error) in [
+        (missing, "Cannot read processor"),
+        (mismatched, "Binding type mismatch"),
+    ] {
+        let result = live.install_composition(&registry, &manifest).unwrap_err();
+        assert!(result.contains(error), "{result}");
+        assert_eq!(live.health(), "ready");
+        assert_eq!(live.export_inputs().unwrap(), inputs);
+        assert_eq!(live.query_typed("echo").unwrap(), inputs["source"]);
+        assert_eq!(live.program_source(), source);
+        assert_eq!(live.schemas(), &schemas);
+        assert_eq!(live.revision(), revision);
+        assert!(!fixture.root.join("live/build-2").exists());
+    }
 }
 
 #[test]

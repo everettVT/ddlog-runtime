@@ -145,6 +145,19 @@ impl Backend {
     pub fn install(&mut self, rules: &str, schemas: Value) -> Result<Value> {
         self.install_with_operators(rules, schemas, &[])
     }
+    /// Resolve exact registry versions and typed bindings, then compile and replay
+    /// the composition before activation. Errors preserve the previous program.
+    /// The returned resolution maps public ports to generated relation names for
+    /// [`Self::apply`], [`Self::query_typed`] and [`Self::export_inputs`].
+    pub fn install_composition(
+        &mut self,
+        registry: &registry::ProcessorRegistry,
+        manifest: &composition::CompositionManifest,
+    ) -> Result<composition::CompositionResolution> {
+        let compiled = registry.compile_composition(manifest)?;
+        self.install_source(compiled.source, compiled.schemas)?;
+        Ok(compiled.resolution)
+    }
     pub fn install_with_operators(
         &mut self,
         rules: &str,

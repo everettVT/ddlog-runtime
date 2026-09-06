@@ -41,7 +41,7 @@ fn main() -> Result<(), String> {
 
 `ProgramInstance::execute` takes an operation name and JSON arguments and returns a result or semantic error. It has no JSON-RPC envelope or connection lifetime. MCP delegates to this same admission path, including immutable pins, exported ports and registered request restrictions. A caller owns and drops each independent instance. Give independent backends distinct build directories.
 
-`Backend` is the lower-level compilation/execution interface. Use `ProgramInstance` when registry pins, public interfaces or registered operations matter. Existing MCP queries and deltas contain DDlog row text; library callers can use `Backend::query_typed` and `export_inputs` for typed rows. `why` returns direct rule-variable witnesses, not recursive proof trees or confidence/provenance.
+`Backend` is the lower-level compilation/execution interface. `Backend::install_composition(&registry, &manifest)` validates exact registry pins and typed bindings, then installs the composition and returns its `CompositionResolution` with generated input/output relation names. Use `ProgramInstance` for public-interface enforcement or registered operations. Existing MCP queries and deltas contain DDlog row text; library callers can use `Backend::query_typed` and `export_inputs` for typed rows. `why` returns direct rule-variable witnesses, not recursive proof trees or confidence/provenance.
 
 Library callers can explicitly save and restore pure-program local checkpoints. See [checkpoint contracts](docs/checkpoints.md). Compatible output-schema changes recompile and replay retained inputs; input schemas stay fixed when data is retained.
 
