@@ -8,6 +8,8 @@ pub mod instance;
 pub use instance::ProgramInstance;
 mod bounded;
 mod checkpoint;
+#[cfg(feature = "iceberg")]
+pub mod iceberg_checkpoint;
 pub use bounded::{
     BoundedQuery, QueryCursor, QueryPage, MAX_NATIVE_RECORD_BYTES, MAX_QUERY_BYTES, MAX_QUERY_ROWS,
 };

@@ -44,6 +44,14 @@ fn decode_checkpoint(bytes: &[u8]) -> Result<Checkpoint> {
     }
     Ok(checkpoint)
 }
+#[cfg(feature = "iceberg")]
+pub(crate) fn validate_encoded(bytes: &[u8]) -> Result<()> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("Checkpoint exceeds 64 MiB limit".into());
+    }
+    decode_checkpoint(bytes)?.state.validate()?;
+    Ok(())
+}
 fn pure(schemas: &BTreeMap<String, Schema>) -> Result<()> {
     if schemas.keys().any(|name| name.starts_with("agent_")) {
         return Err("Registered-operation state cannot be checkpointed or restored; external outcomes require reconciliation".into());
@@ -135,10 +143,10 @@ impl State {
 }
 
 impl Backend {
-    /// Atomically publish a local checkpoint. The digest detects corruption;
-    /// it is not authentication. Paths and checkpoints are operator-controlled.
-    /// The metadata is opaque and is returned unchanged by restore.
-    pub fn save_checkpoint(&self, path: &Path, metadata: Value) -> Result<Value> {
+    /// Capture validated, integrity-bound acknowledged state without publishing it.
+    /// This freezes a checkpoint boundary; later native mutations do not change it.
+    /// The caller must durably publish bytes before acknowledging persistence.
+    pub fn checkpoint_bytes(&self, metadata: Value) -> Result<Vec<u8>> {
         pure(&self.schema)?;
         let state = State {
             format_version: FORMAT_VERSION,
@@ -162,6 +170,15 @@ impl Backend {
         // Opaque metadata must survive the same parser and digest verification
         // as restore, including its recursion limit, before any file is touched.
         decode_checkpoint(&bytes)?;
+        Ok(bytes)
+    }
+
+    /// Atomically publish a local checkpoint. The digest detects corruption;
+    /// it is not authentication. Paths and checkpoints are operator-controlled.
+    /// The metadata is opaque and is returned unchanged by restore.
+    pub fn save_checkpoint(&self, path: &Path, metadata: Value) -> Result<Value> {
+        let bytes = self.checkpoint_bytes(metadata)?;
+        let sha256 = decode_checkpoint(&bytes)?.sha256;
         let parent = path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -216,7 +233,19 @@ impl Backend {
         if bytes.len() as u64 > MAX_BYTES {
             return Err("Checkpoint exceeds 64 MiB limit".into());
         }
-        let checkpoint = decode_checkpoint(&bytes)?;
+        self.restore_checkpoint_bytes(&bytes)
+    }
+
+    /// Restore an integrity-bound snapshot retrieved from a storage backend.
+    /// Applies the same validation and fresh-owner requirements as local restore.
+    pub fn restore_checkpoint_bytes(&mut self, bytes: &[u8]) -> Result<Value> {
+        if self.health() != "uninitialized" || self.version != 0 || !self.facts.is_empty() {
+            return Err("Checkpoint restore requires a fresh uninitialized backend".into());
+        }
+        if bytes.len() as u64 > MAX_BYTES {
+            return Err("Checkpoint exceeds 64 MiB limit".into());
+        }
+        let checkpoint = decode_checkpoint(bytes)?;
         let facts = checkpoint.state.validate()?;
         // Stage in a separate owner; errors leave this backend untouched.
         let mut candidate = Backend::new(self.root.clone(), self.driver.clone());
