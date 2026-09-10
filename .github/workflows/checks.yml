@@ -8,11 +8,15 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       SHARED_TEST_TIMEOUT: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Optional Iceberg toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
+          rustup override set 1.95.0
       - name: Formatting and transport-free contracts
         run: |
           cargo fmt --all --check

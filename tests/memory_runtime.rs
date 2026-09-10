@@ -739,3 +739,152 @@ fn lost_plain_commit_ack_does_not_advance_inputs_or_allow_checkpoint() {
         .save_checkpoint(&fixture.root.join("uncertain.json"), Value::Null)
         .is_err());
 }
+
+#[cfg(feature = "iceberg")]
+#[tokio::test]
+async fn iceberg_stage_is_invisible_retry_is_exact_and_restore_is_runtime_owned() {
+    use ddlog_runtime::iceberg_checkpoint;
+    use iceberg::{
+        io::LocalFsStorageFactory, Catalog, CatalogBuilder, NamespaceIdent, TableCreation,
+        TableIdent,
+    };
+    use iceberg_catalog_sql::{SqlBindStyle, SqlCatalogBuilder};
+    use std::{collections::HashMap, sync::Arc};
+    let fixture = Fixture::new();
+    let catalog = SqlCatalogBuilder::default()
+        .uri(format!(
+            "sqlite://{}?mode=rwc",
+            fixture.root.join("catalog.sqlite").display()
+        ))
+        .warehouse_location(format!("file://{}/warehouse", fixture.root.display()))
+        .sql_bind_style(SqlBindStyle::QMark)
+        .with_storage_factory(Arc::new(LocalFsStorageFactory))
+        .load("checkpoints", HashMap::new())
+        .await
+        .unwrap();
+    let namespace = NamespaceIdent::new("runtime".into());
+    catalog
+        .create_namespace(&namespace, HashMap::new())
+        .await
+        .unwrap();
+    let ident = TableIdent::from_strs(["runtime", "checkpoints"]).unwrap();
+    let table = catalog
+        .create_table(
+            &namespace,
+            TableCreation::builder()
+                .name("checkpoints".into())
+                .schema(iceberg_checkpoint::schema().unwrap())
+                .format_version(iceberg::spec::FormatVersion::V3)
+                .properties(HashMap::from([(
+                    "commit.retry.num-retries".into(),
+                    "0".into(),
+                )]))
+                .build(),
+        )
+        .await
+        .unwrap();
+    let mut live = initial(&fixture);
+    let inputs = live.export_inputs().unwrap();
+    let receipt = live
+        .stage_iceberg_checkpoint(
+            &table,
+            "checkpoint-1",
+            &format!("file://{}/external/one.parquet", fixture.root.display()),
+            json!({"opaque":1}),
+        )
+        .await
+        .unwrap();
+    assert!(catalog
+        .load_table(&ident)
+        .await
+        .unwrap()
+        .metadata()
+        .current_snapshot_id()
+        .is_none());
+    let mut target = fixture.backend("restored");
+    assert!(target
+        .restore_iceberg_checkpoint(&catalog, &ident, &receipt)
+        .await
+        .is_err());
+    assert_eq!(target.health(), "uninitialized");
+    let mut corrupt = receipt.clone();
+    corrupt.checkpoint_sha256 = "wrong".into();
+    assert!(iceberg_checkpoint::publish(&catalog, &ident, &corrupt)
+        .await
+        .is_err());
+    assert!(catalog
+        .load_table(&ident)
+        .await
+        .unwrap()
+        .metadata()
+        .current_snapshot_id()
+        .is_none());
+    let mut bad_descriptor = receipt.clone();
+    let incorrect_file = iceberg::spec::DataFileBuilder::default()
+        .content(iceberg::spec::DataContentType::Data)
+        .file_path(receipt.object_uri.clone())
+        .file_format(iceberg::spec::DataFileFormat::Parquet)
+        .record_count(1)
+        .file_size_in_bytes(1)
+        .partition_spec_id(table.metadata().default_partition_spec_id())
+        .build()
+        .unwrap();
+    bad_descriptor.descriptor_avro.clear();
+    iceberg::spec::write_data_files_to_avro(
+        &mut bad_descriptor.descriptor_avro,
+        vec![incorrect_file],
+        table.metadata().default_partition_type(),
+        iceberg::spec::FormatVersion::V3,
+    )
+    .unwrap();
+    assert!(
+        iceberg_checkpoint::publish(&catalog, &ident, &bad_descriptor)
+            .await
+            .is_err()
+    );
+    assert!(catalog
+        .load_table(&ident)
+        .await
+        .unwrap()
+        .metadata()
+        .current_snapshot_id()
+        .is_none());
+    let first = iceberg_checkpoint::publish(&catalog, &ident, &receipt)
+        .await
+        .unwrap();
+    let again = iceberg_checkpoint::publish(&catalog, &ident, &receipt)
+        .await
+        .unwrap();
+    assert!(again.adopted);
+    assert_eq!(first.snapshot_id, again.snapshot_id);
+    assert!(iceberg_checkpoint::publish(&catalog, &ident, &corrupt)
+        .await
+        .is_err());
+    live.apply_without_deltas(
+        &json!([{"op":"insert","predicate":"source","values":[9,"unpublished"]}]),
+    )
+    .unwrap();
+    assert_eq!(
+        target
+            .restore_iceberg_checkpoint(&catalog, &ident, &receipt)
+            .await
+            .unwrap(),
+        json!({"opaque":1})
+    );
+    assert_eq!(target.export_inputs().unwrap(), inputs);
+    assert!(target
+        .restore_iceberg_checkpoint(&catalog, &ident, &receipt)
+        .await
+        .is_err());
+    let path = receipt.object_uri.strip_prefix("file://").unwrap();
+    fs::write(path, b"corrupt immutable object").unwrap();
+    assert!(iceberg_checkpoint::publish(&catalog, &ident, &receipt)
+        .await
+        .is_err());
+    let mut rejected = fixture.backend("corrupt");
+    assert!(rejected
+        .restore_iceberg_checkpoint(&catalog, &ident, &receipt)
+        .await
+        .is_err());
+    assert_eq!(rejected.health(), "uninitialized");
+}

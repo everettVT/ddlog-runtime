@@ -17,12 +17,26 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
 
+iceberg = { git = "https://github.com/apache/iceberg-rust.git", rev = "4d83bc77dc10cff851a3ef427c451ff977bc3643", optional = true }
+iceberg-catalog-sql = { git = "https://github.com/apache/iceberg-rust.git", rev = "4d83bc77dc10cff851a3ef427c451ff977bc3643", optional = true }
+arrow-array = { version = "59.2", optional = true }
+parquet = { version = "59.2", default-features = false, features = ["arrow"], optional = true }
+futures = { version = "0.3", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["any", "sqlite", "runtime-tokio"], optional = true }
+
+async-trait = { version = "0.1", optional = true }
+bytes = { version = "1", optional = true }
+typetag = { version = "0.2", optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"], optional = true }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [features]
 default = []
 mcp = []
+iceberg = ["dep:async-trait", "dep:bytes", "dep:typetag", "dep:reqwest", "dep:iceberg", "dep:iceberg-catalog-sql", "dep:arrow-array", "dep:parquet", "dep:futures", "dep:tokio", "dep:sqlx"]
 
 [[bin]]
 name = "lemmalog-ddlog-mcp"
@@ -35,3 +49,7 @@ incremental = false
 [profile.test]
 debug = 0
 incremental = false
+
+[[example]]
+name = "iceberg_recovery"
+required-features = ["iceberg"]

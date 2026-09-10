@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - 'native/**'
+      - 'src/checkpoint.rs'
+      - 'src/iceberg_checkpoint.rs'
+      - 'examples/iceberg_recovery.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'scripts/bootstrap-native.py'
       - 'scripts/build-ddlog.sh'
       - 'scripts/test-native-install.py'
@@ -16,6 +21,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Iceberg toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup override set 1.95.0
       - name: Build host
         run: cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
       - name: Install from pinned public inputs
@@ -24,6 +33,16 @@ jobs:
         run: |
           source "$RUNNER_TEMP/ddlog-native/env.sh"
           python3 scripts/test-native-install.py "$RUNNER_TEMP/native-smoke"
+      - name: Build runtime Iceberg acceptance
+        run: cargo build --locked --features iceberg --example iceberg_recovery
+      - name: Native Iceberg checkpoint across processes
+        run: |
+          source "$RUNNER_TEMP/ddlog-native/env.sh"
+          root="$RUNNER_TEMP/iceberg-native"
+          driver="$GITHUB_WORKSPACE/scripts/build-ddlog.sh"
+          for phase in stage publish restore; do
+            target/debug/examples/iceberg_recovery "$phase" "$root" "$driver" "file://$root/warehouse"
+          done
       - name: Compile and exercise bundled operator
         run: |
           source "$RUNNER_TEMP/ddlog-native/env.sh"

@@ -1,0 +1,142 @@
+{
+  "scope": "runtime-owned full-checkpoint integration",
+  "recorded_date": "2026-09-09",
+  "base_runtime_commit": "f39496649b42eb447b4b904c952e9a6de4d99a36",
+  "iceberg_git_pin": "4d83bc77dc10cff851a3ef427c451ff977bc3643",
+  "arrow_parquet_version": "59.3.0",
+  "host_rust": "1.95.0",
+  "native_ddlog": "1.2.3",
+  "native_rust": "1.65.0",
+  "provider_calls": 0,
+  "source_sha256": {
+    "src/checkpoint.rs": "5b7054fc856227d0a32663b4c8f3148777bd88ff3aff89c820f8d636e957d938",
+    "src/iceberg_checkpoint.rs": "3ea8974124fbe0919b76e22c5c080928f8b0a73bbefb4ef25dc1b6df9913606a",
+    "examples/iceberg_recovery.rs": "7833b43fcec4c16e67b82ff498e03e321e9227bc7b51518de068b5613157c0df",
+    "examples/support/r2_rest.rs": "34a85195389b4bb716286e97e626b9e9694ee20334bbe6fbf8e46ce9336800dd",
+    "scripts/build-ddlog.sh": "a4fe02af222d785c694e604dbc0a152658d38c717a43f022c41998fd1d5bc362",
+    "Cargo.lock": "120e02cbaff3afa334842f987244c73ff22433c889aca08a28134fc3c8409da0"
+  },
+  "acceptance": {
+    "local": {
+      "staging_catalog_invisible": true,
+      "separate_stage_publish_restore_processes": true,
+      "fresh_native_backend_installations": 2,
+      "native_toolchain_and_cargo_cache": "existing pinned environment; current runtime build driver invoked for each fresh backend",
+      "catalog": "local SQLite; catalog location retained across processes",
+      "object_storage": "local FileIO",
+      "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+      "object_sha256": "7b81bc68d67ab80f9630628a452c5b1aa4351760b4b05bb9b6970f310e59ddc8",
+      "publication": {
+        "collision_rejected": true,
+        "first": {
+          "adopted": false,
+          "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+          "publication_id": "boundary-2",
+          "snapshot_id": 7258142111068303868
+        },
+        "retry": {
+          "adopted": true,
+          "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+          "publication_id": "boundary-2",
+          "snapshot_id": 7258142111068303868
+        }
+      },
+      "restore": {
+        "empty_relation_retained": true,
+        "metadata": {
+          "purpose": "native-iceberg-acceptance"
+        },
+        "passed": true,
+        "post_restore_retraction": true,
+        "remote": false,
+        "revision_restored": true,
+        "rows": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ]
+      },
+      "raw_receipt_sha256": {
+        "staged.json": "793150c933f1b9a82dffcbb9a9c8405d7695bf43fdd7da43e380294137083d8f",
+        "expected.json": "485db350023c203c2ff4409aebd12378fc29f8824f29ff6e4fb10a2c01f26e93",
+        "publication.json": "eaafcceed8e739ea9d64237d4f53f63196394954b8f2217b6f9bcf3053e3c3c1",
+        "restored.json": "2b8b914a95ea3aeb6ddacf4023872639d05927699693d5ae974686ca4d33fcc5"
+      }
+    },
+    "r2": {
+      "staging_catalog_invisible": true,
+      "separate_stage_publish_restore_processes": true,
+      "fresh_native_backend_installations": 2,
+      "native_toolchain_and_cargo_cache": "existing pinned environment; current runtime build driver invoked for each fresh backend",
+      "catalog": "local SQLite; catalog location retained across processes",
+      "object_storage": "Cloudflare R2 through REST FileIO (not S3 throughput)",
+      "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+      "object_sha256": "7b81bc68d67ab80f9630628a452c5b1aa4351760b4b05bb9b6970f310e59ddc8",
+      "publication": {
+        "collision_rejected": true,
+        "first": {
+          "adopted": false,
+          "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+          "publication_id": "boundary-2",
+          "snapshot_id": 529807738589808136
+        },
+        "retry": {
+          "adopted": true,
+          "checkpoint_sha256": "5a289255efee86497d9b41b54ef6ec1de67a2fcaeb70abea2ae8663868f4a964",
+          "publication_id": "boundary-2",
+          "snapshot_id": 529807738589808136
+        }
+      },
+      "restore": {
+        "empty_relation_retained": true,
+        "metadata": {
+          "purpose": "native-iceberg-acceptance"
+        },
+        "passed": true,
+        "post_restore_retraction": true,
+        "remote": true,
+        "revision_restored": true,
+        "rows": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ]
+      },
+      "raw_receipt_sha256": {
+        "staged.json": "dc7b8c581a5aa4f0bb6771d08d99526f73352640b88bc59fb211d7b230ec00a5",
+        "expected.json": "485db350023c203c2ff4409aebd12378fc29f8824f29ff6e4fb10a2c01f26e93",
+        "publication.json": "91389073637e024524c1a4a85e0cfc09db07ca05cf0106dcfd2d75e1a371175b",
+        "restored.json": "7ece41693c83abe364f58a5b6d4d23f0dd6114137e8bd326917a0716bb812628"
+      },
+      "isolated_object_prefix": "archetype-staging/ddlog-acceptance/20260909-runtime-03"
+    }
+  },
+  "limits": [
+    "one cooperative publisher per table",
+    "full checkpoint envelope, not per-fact analytical table",
+    "no WAL or distributed fencing",
+    "64MiB checkpoint cap",
+    "local catalog is not remotely replicated",
+    "R2 acceptance adapter buffers <=2MiB and performs real remote reads; no throughput claim",
+    "no power-loss or external-effect exactly-once claim"
+  ],
+  "redaction": "No credentials, account ID, local filesystem paths, process identities or user data are included."
+}
