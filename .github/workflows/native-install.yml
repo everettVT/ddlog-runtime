@@ -7,6 +7,7 @@ on:
       - 'src/checkpoint.rs'
       - 'src/iceberg_checkpoint.rs'
       - 'examples/iceberg_recovery.rs'
+      - 'examples/support/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'scripts/bootstrap-native.py'
