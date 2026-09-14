@@ -1,9 +1,91 @@
 //! Program state and semantic operations, independent of MCP and connections.
 use crate::composition::CompositionResolution;
-use crate::registry::{GitProvenance, ProcessorDefinition, ProcessorRegistry};
-use crate::{AgentProgram, Backend, Operation};
+use crate::registry::{GitProvenance, ProcessorDefinition, ProcessorRegistry, ProcessorVersion};
+use crate::{AgentProgram, Backend, Operation, Schema};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+
+/// One relation addressable through a world's public tools. `physical` is the
+/// generated native relation name; every other field is the public contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicRelation {
+    pub name: String,
+    pub input: bool,
+    pub fields: Vec<String>,
+    pub physical: String,
+}
+
+/// Public relations of one registered definition, without a live instance.
+/// A program without an interface exposes every declared schema; a program with
+/// an interface exposes its interface inputs and outputs; a composition exposes
+/// its resolution inputs and outputs. Inputs precede outputs, each sorted by name.
+pub fn public_relations(record: &ProcessorVersion) -> Result<Vec<PublicRelation>, String> {
+    match &record.definition {
+        ProcessorDefinition::Program(program) => {
+            let schemas: BTreeMap<String, Schema> =
+                serde_json::from_value(program.schemas.clone()).map_err(|e| e.to_string())?;
+            let relation = |name: &str| -> Result<PublicRelation, String> {
+                let schema = schemas
+                    .get(name)
+                    .ok_or_else(|| format!("Interface relation {name} is not declared"))?;
+                Ok(PublicRelation {
+                    name: name.to_string(),
+                    input: schema.input,
+                    fields: schema.fields.clone(),
+                    physical: name.to_string(),
+                })
+            };
+            let mut names: Vec<&str> = match &program.interface {
+                Some(interface) => interface
+                    .inputs
+                    .iter()
+                    .chain(&interface.outputs)
+                    .map(String::as_str)
+                    .collect(),
+                None => schemas.keys().map(String::as_str).collect(),
+            };
+            names.sort_by_key(|name| (!schemas.get(*name).is_some_and(|s| s.input), *name));
+            names.iter().map(|name| relation(name)).collect()
+        }
+        ProcessorDefinition::Composition(_) => {
+            let resolution = record
+                .composition
+                .as_ref()
+                .ok_or("Composition record lacks its resolution")?;
+            let mut relations = Vec::new();
+            for (input, ports) in [(true, &resolution.inputs), (false, &resolution.outputs)] {
+                for (public, physical) in ports {
+                    let fields = resolution
+                        .relations
+                        .get(physical)
+                        .and_then(|r| r.get("fields"))
+                        .cloned()
+                        .ok_or_else(|| format!("Composition relation {physical} lacks fields"))?;
+                    relations.push(PublicRelation {
+                        name: public.clone(),
+                        input,
+                        fields: serde_json::from_value(fields).map_err(|e| e.to_string())?,
+                        physical: physical.clone(),
+                    });
+                }
+            }
+            Ok(relations)
+        }
+    }
+}
+
+/// Continuation for paged reads of retained input facts. Output continuations
+/// are the native-bound [`crate::QueryCursor`]; both are opaque to callers.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InputCursor {
+    kind: String,
+    revision: u64,
+    predicate: String,
+    offset: usize,
+}
 
 /// One semantic owner whose caller controls its lifetime independently of connections.
 pub struct ProgramInstance {
@@ -13,6 +95,7 @@ pub struct ProgramInstance {
     pub(crate) registry: Option<ProcessorRegistry>,
     pub(crate) instance_id: Option<String>,
     processor: Option<Value>,
+    record: Option<ProcessorVersion>,
     interface: Option<PublicInterface>,
     composition: Option<CompositionResolution>,
 }
@@ -31,6 +114,7 @@ impl ProgramInstance {
             instance_id,
             agent: None,
             processor: None,
+            record: None,
             interface: None,
             composition: None,
         }
@@ -45,9 +129,14 @@ impl ProgramInstance {
     /// An error never authorizes automatic retry of an uncertain mutation.
     pub fn execute(&mut self, name: &str, a: &Value) -> Result<Value, String> {
         if name == "instance_info" && self.instance_id.is_some() {
-            return Ok(
-                json!({"instance_id":self.instance_id,"health":self.backend.health(),"processor":self.processor,"composition":self.composition}),
-            );
+            let live = self.backend.health() == "ready";
+            return Ok(json!({
+                "instance_id":self.instance_id,"health":self.backend.health(),
+                "processor":self.processor,"composition":self.composition,
+                "revision":live.then(|| self.backend.revision()),
+                "program_version":live.then_some(self.backend.version),
+                "source_sha256":live.then(|| self.backend.source_sha256()),
+            }));
         }
         if name.starts_with("processor_") && name != "processor_install" {
             return self.execute_registry(name, a);
@@ -143,15 +232,43 @@ impl ProgramInstance {
                         "Registered operation relations must use the operation tools".into(),
                     );
                 }
-                if let Some(interface) = &self.interface {
+                let mut result = if let Some(interface) = &self.interface {
                     let changes = interface.changes(&a["changes"])?;
                     let mut result = self.backend.apply(&changes)?;
                     result["deltas"] =
                         json!(interface.outputs(result["deltas"].as_str().unwrap_or("")));
-                    Ok(result)
+                    result
                 } else {
-                    self.backend.apply(&a["changes"])
+                    self.backend.apply(&a["changes"])?
+                };
+                result["revision"] = json!(self.backend.revision());
+                Ok(result)
+            }
+            "relations" => {
+                let mut relations = Vec::new();
+                for relation in self.public_relations()? {
+                    let count = if relation.input {
+                        self.backend
+                            .export_inputs()?
+                            .get(&relation.physical)
+                            .map_or(0, |rows| rows.len() as u64)
+                    } else {
+                        self.backend.count_rows(&relation.physical)?
+                    };
+                    relations.push(json!({"name":relation.name,"input":relation.input,"fields":relation.fields,"count":count}));
                 }
+                Ok(json!({"revision":self.backend.revision(),"relations":relations}))
+            }
+            "query_rows" => self.query_rows(a),
+            "program_source" => {
+                if self.backend.health() != "ready" {
+                    return Err(
+                        "Program source is available from a healthy installed instance".into(),
+                    );
+                }
+                Ok(
+                    json!({"source":self.backend.program_source(),"source_sha256":self.backend.source_sha256()}),
+                )
             }
             "lemmalog_query" => {
                 let predicate = string(a, "predicate")?;
@@ -184,6 +301,102 @@ impl ProgramInstance {
             }
             _ => Err("Unknown tool".into()),
         }
+    }
+
+    /// Public relations of the running program: the pinned record's contract
+    /// when installed from the registry, otherwise every declared schema.
+    pub fn public_relations(&self) -> Result<Vec<PublicRelation>, String> {
+        if let Some(record) = &self.record {
+            return public_relations(record);
+        }
+        if self.backend.health() != "ready" {
+            return Err("Install a program first".into());
+        }
+        let mut relations: Vec<PublicRelation> = self
+            .backend
+            .schemas()
+            .iter()
+            .map(|(name, schema)| PublicRelation {
+                name: name.clone(),
+                input: schema.input,
+                fields: schema.fields.clone(),
+                physical: name.clone(),
+            })
+            .collect();
+        relations.sort_by_key(|relation| (!relation.input, relation.name.clone()));
+        Ok(relations)
+    }
+
+    /// Typed page of one public relation. Outputs stream through the bounded
+    /// native reader; inputs page over retained facts. `total` is always the
+    /// full row count at the reported revision.
+    fn query_rows(&mut self, a: &Value) -> Result<Value, String> {
+        let predicate = string(a, "predicate")?;
+        let max_rows = match a.get("max_rows") {
+            None | Some(Value::Null) => 500,
+            Some(value) => usize::try_from(value.as_u64().ok_or("max_rows must be an integer")?)
+                .map_err(|e| e.to_string())?,
+        };
+        if !(1..=crate::MAX_QUERY_ROWS).contains(&max_rows) {
+            return Err(format!("max_rows must be in 1..={}", crate::MAX_QUERY_ROWS));
+        }
+        let relation = self
+            .public_relations()?
+            .into_iter()
+            .find(|relation| relation.name == predicate)
+            .ok_or_else(|| format!("Unknown public relation {predicate}"))?;
+        let continuation = a.get("continuation").filter(|value| !value.is_null());
+        if relation.input {
+            let offset = match continuation {
+                Some(cursor) => {
+                    let cursor: InputCursor =
+                        serde_json::from_value(cursor.clone()).map_err(|e| e.to_string())?;
+                    if cursor.kind != "input"
+                        || cursor.revision != self.backend.revision()
+                        || cursor.predicate != predicate
+                    {
+                        return Err(
+                            "Continuation does not match the live owner, revision or query".into(),
+                        );
+                    }
+                    cursor.offset
+                }
+                None => 0,
+            };
+            let inputs = self.backend.export_inputs()?;
+            let all = inputs
+                .get(&relation.physical)
+                .ok_or("Retained input schema missing")?;
+            if offset > all.len() {
+                return Err("Continuation offset exceeds the selected relation".into());
+            }
+            let rows: Vec<Vec<Value>> = all.iter().skip(offset).take(max_rows).cloned().collect();
+            let end = offset + rows.len();
+            let complete = end >= all.len();
+            let revision = self.backend.revision();
+            return Ok(json!({
+                "predicate":predicate,"revision":revision,"fields":relation.fields,"rows":rows,
+                "total":all.len(),"complete":complete,
+                "continuation":(!complete).then(|| json!(InputCursor{kind:"input".into(),revision,predicate:predicate.into(),offset:end})),
+            }));
+        }
+        let query = crate::BoundedQuery {
+            filters: BTreeMap::new(),
+            max_rows,
+            max_bytes: crate::MAX_QUERY_BYTES,
+            continuation: continuation
+                .map(|cursor| serde_json::from_value(cursor.clone()).map_err(|e| e.to_string()))
+                .transpose()?,
+        };
+        let page = self
+            .backend
+            .query_typed_bounded(&relation.physical, &query)?;
+        let total = self.backend.count_rows(&relation.physical)?;
+        Ok(json!({
+            "predicate":predicate,"revision":page.revision,"fields":relation.fields,"rows":page.rows,
+            "total":total,"complete":!page.truncated,
+            "continuation":page.continuation.map(|cursor| serde_json::to_value(cursor).unwrap_or(Value::Null)),
+        }))
     }
 
     fn execute_registry(&self, name: &str, a: &Value) -> Result<Value, String> {
@@ -287,6 +500,7 @@ impl ProgramInstance {
                 string(a, "processor_id")?,
                 a.get("version").map(|_| string(a, "version")).transpose()?,
             )?;
+        let pinned = record.clone();
         let mut result = match record.definition {
             ProcessorDefinition::Composition(definition) => {
                 let compiled = self
@@ -353,6 +567,7 @@ impl ProgramInstance {
             }
         };
         self.processor = Some(json!({"processor_id":record.processor_id,"version":record.version}));
+        self.record = Some(pinned);
         result["processor"] = self.processor.clone().unwrap();
         if let Some(composition) = &self.composition {
             result["composition"] = serde_json::to_value(composition).map_err(|e| e.to_string())?;

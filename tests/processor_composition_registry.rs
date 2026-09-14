@@ -70,6 +70,7 @@ fn manifest(leaf: &ProcessorVersion) -> CompositionManifest {
 }
 fn composed(manifest: CompositionManifest) -> ProcessorDefinition {
     ProcessorDefinition::Composition(CompositionDefinition {
+        inspection: None,
         composition: manifest,
     })
 }
@@ -649,12 +650,14 @@ fn nested_program_interfaces_preserve_private_boundaries_and_exact_leaf_history(
     let second = registry.create(composed(wrapper), None).unwrap();
     assert_eq!(second.version, outer.version);
     assert_eq!(second.composition, outer.composition);
-    assert!(registry
-        .list(10, None, false)
-        .unwrap()
-        .processors
-        .iter()
-        .all(|row| serde_json::to_value(row).unwrap()["kind"] == "program"));
+    for row in registry.list(10, None, false).unwrap().processors {
+        let expected = if row.processor_id == leaf.processor_id {
+            "program"
+        } else {
+            "composition"
+        };
+        assert_eq!(serde_json::to_value(&row).unwrap()["kind"], expected);
+    }
 }
 
 #[test]

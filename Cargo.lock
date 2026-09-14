@@ -812,6 +812,7 @@ dependencies = [
  "lemmalog-syntax",
  "libc",
  "parquet",
+ "regex",
  "reqwest 0.13.5",
  "serde",
  "serde_json",

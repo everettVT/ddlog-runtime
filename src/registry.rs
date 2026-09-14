@@ -40,6 +40,8 @@ pub enum ProcessorDefinition {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramDefinition {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<super::inspection::InspectionMetadata>,
     pub rules: String,
     pub schemas: Value,
     #[serde(default)]
@@ -53,6 +55,8 @@ pub struct ProgramDefinition {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CompositionDefinition {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<super::inspection::InspectionMetadata>,
     pub composition: CompositionManifest,
 }
 
@@ -466,7 +470,7 @@ impl ProcessorRegistry {
                 version: record.version,
                 content_sha256: record.content_sha256,
                 created_at_unix_ms: record.created_at_unix_ms,
-                kind: ProcessorKind::Program,
+                kind: kind_of(&record.definition),
                 status: lifecycle.status,
                 lifecycle_revision: lifecycle.lifecycle_revision,
                 archived_at_unix_ms: if lifecycle.status == ProcessorStatus::Archived {
@@ -564,7 +568,17 @@ impl ProcessorRegistry {
         &self,
         manifest: &CompositionManifest,
     ) -> Result<CompiledComposition> {
-        let nodes = self.resolve_nodes(manifest, &mut Vec::new(), &mut 0)?;
+        self.compile_composition_with(manifest, &|reference| {
+            self.read_version(&reference.processor_id, &reference.version)
+        })
+    }
+
+    fn compile_composition_with(
+        &self,
+        manifest: &CompositionManifest,
+        reader: &dyn Fn(&ProcessorReference) -> Result<ProcessorVersion>,
+    ) -> Result<CompiledComposition> {
+        let nodes = self.resolve_nodes(manifest, &mut Vec::new(), &mut 0, reader)?;
         super::composition::compile_resolved(manifest, &nodes)
     }
 
@@ -573,6 +587,7 @@ impl ProcessorRegistry {
         manifest: &CompositionManifest,
         stack: &mut Vec<ProcessorReference>,
         expanded: &mut usize,
+        reader: &dyn Fn(&ProcessorReference) -> Result<ProcessorVersion>,
     ) -> Result<BTreeMap<String, ResolvedNode>> {
         let mut nodes = BTreeMap::new();
         for (alias, reference) in &manifest.nodes {
@@ -587,7 +602,7 @@ impl ProcessorRegistry {
             }
             *expanded += 1;
             stack.push(reference.clone());
-            let record = self.read_version(&reference.processor_id, &reference.version)?;
+            let record = reader(reference)?;
             let children = match &record.definition {
                 ProcessorDefinition::Program(program) => {
                     if program.operation.is_some() {
@@ -600,7 +615,8 @@ impl ProcessorRegistry {
                     BTreeMap::new()
                 }
                 ProcessorDefinition::Composition(definition) => {
-                    let children = self.resolve_nodes(&definition.composition, stack, expanded)?;
+                    let children =
+                        self.resolve_nodes(&definition.composition, stack, expanded, reader)?;
                     let compiled =
                         super::composition::compile_resolved(&definition.composition, &children)?;
                     if record.composition.as_ref() != Some(&compiled.resolution) {
@@ -619,16 +635,268 @@ impl ProcessorRegistry {
         &self,
         definition: &ProcessorDefinition,
     ) -> Result<Option<CompositionResolution>> {
+        self.validate_definition_with(definition, &|reference| {
+            self.read_version(&reference.processor_id, &reference.version)
+        })
+    }
+
+    fn validate_definition_with(
+        &self,
+        definition: &ProcessorDefinition,
+        reader: &dyn Fn(&ProcessorReference) -> Result<ProcessorVersion>,
+    ) -> Result<Option<CompositionResolution>> {
+        let metadata = match definition {
+            ProcessorDefinition::Program(p) => &p.inspection,
+            ProcessorDefinition::Composition(c) => &c.inspection,
+        };
+        if let Some(metadata) = metadata {
+            metadata.validate()?;
+        }
         match definition {
             ProcessorDefinition::Program(program) => {
                 validate_program(program)?;
                 Ok(None)
             }
             ProcessorDefinition::Composition(composition) => Ok(Some(
-                self.compile_composition(&composition.composition)?
+                self.compile_composition_with(&composition.composition, reader)?
                     .resolution,
             )),
         }
+    }
+
+    /// Every immutable version of one processor, oldest publication first.
+    /// Each record is envelope- and hash-checked exactly as an exact read.
+    pub fn versions(&self, processor_id: &str) -> Result<Vec<ProcessorVersion>> {
+        validate_processor_id(processor_id)?;
+        let directory = self.root.join(processor_id).join("versions");
+        let mut records = Vec::new();
+        for entry in fs::read_dir(&directory).map_err(io_error)? {
+            let entry = entry.map_err(io_error)?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(hex) = name.strip_suffix(".json") else {
+                continue;
+            };
+            if !is_hex(hex, 64) {
+                continue;
+            }
+            records.push(self.read_version(processor_id, &format!("sha256:{hex}"))?);
+        }
+        records.sort_by(|a, b| {
+            a.created_at_unix_ms
+                .cmp(&b.created_at_unix_ms)
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        Ok(records)
+    }
+
+    /// Admit one foreign version record while preserving its identity. The
+    /// envelope, content hash, lineage and definition are verified exactly as
+    /// an exact read verifies them; composition children must already exist
+    /// here. A processor new to this registry gets `current.json` pointing at
+    /// this version; an existing processor keeps its current pointer.
+    pub fn import_version(&self, record: ProcessorVersion) -> Result<ImportStatus> {
+        verify_envelope(
+            &record,
+            &record.processor_id.clone(),
+            &record.version.clone(),
+        )?;
+        let composition = self.validate_definition(&record.definition)?;
+        if record.composition != composition {
+            return Err(composition_mismatch(&record));
+        }
+        let _lock = UpdateLock::acquire(&self.root)?;
+        self.import_locked(&record)
+    }
+
+    fn import_locked(&self, record: &ProcessorVersion) -> Result<ImportStatus> {
+        let directory = self.root.join(&record.processor_id);
+        let path = self.version_path(&record.processor_id, &record.version);
+        match fs::symlink_metadata(&path) {
+            Ok(_) => {
+                return if self.read_version(&record.processor_id, &record.version)? == *record {
+                    Ok(ImportStatus::Present)
+                } else {
+                    Err(format!("Processor {} version {} already exists with different content; imports never overwrite an immutable version", record.processor_id, record.version))
+                };
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(io_error(error)),
+        }
+        let new_processor = match fs::symlink_metadata(directory.join("current.json")) {
+            Ok(_) => false,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) => return Err(io_error(error)),
+        };
+        if new_processor {
+            create_private_dir(&directory)?;
+            check_private_dir(&directory)?;
+            create_private_dir(&directory.join("versions"))?;
+            check_private_dir(&directory.join("versions"))?;
+        }
+        atomic_json(&path, record, false)?;
+        if new_processor {
+            atomic_json(
+                &directory.join("current.json"),
+                &Current {
+                    format_version: FORMAT_VERSION,
+                    processor_id: record.processor_id.clone(),
+                    version: record.version.clone(),
+                    lineage: record.lineage.clone(),
+                },
+                true,
+            )?;
+        }
+        Ok(ImportStatus::Imported)
+    }
+
+    /// Import every version of every processor of a foreign registry directory
+    /// (or one processor and its dependency closure) with identities preserved.
+    /// The source is read with plain JSON reads and never written or locked.
+    /// All records are validated before anything is written; any validation
+    /// error leaves this registry untouched. `dry_run` reports the plan only.
+    pub fn import_registry(
+        &self,
+        source: &Path,
+        processor_id: Option<&str>,
+        dry_run: bool,
+    ) -> Result<ImportReport> {
+        if !source.is_absolute() || !source.is_dir() {
+            return Err("source_registry must be an absolute path to an existing directory".into());
+        }
+        if source == self.root {
+            return Err("source_registry must differ from this registry".into());
+        }
+        let mut plan = ImportPlan {
+            source: source.to_path_buf(),
+            processors: BTreeMap::new(),
+            order: Vec::new(),
+            report: ImportReport::default(),
+        };
+        let roots: Vec<String> = match processor_id {
+            Some(id) => {
+                validate_processor_id(id)?;
+                vec![id.to_string()]
+            }
+            None => {
+                let mut ids = Vec::new();
+                for entry in fs::read_dir(source).map_err(io_error)? {
+                    let entry = entry.map_err(io_error)?;
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if validate_processor_id(&name).is_ok()
+                        && entry.file_type().map_err(io_error)?.is_dir()
+                        && entry.path().join("current.json").is_file()
+                    {
+                        ids.push(name);
+                    }
+                }
+                ids.sort();
+                if ids.is_empty() {
+                    return Err(format!("No processors found in {}", source.display()));
+                }
+                ids
+            }
+        };
+        for id in roots {
+            plan.load_processor(self, &id, &mut Vec::new())?;
+        }
+        if !plan.report.errors.is_empty() {
+            return Ok(plan.report);
+        }
+        let reader = |reference: &ProcessorReference| -> Result<ProcessorVersion> {
+            match plan
+                .processors
+                .get(&reference.processor_id)
+                .and_then(|source| source.records.get(&reference.version))
+            {
+                Some(record) => Ok(record.clone()),
+                None => self.read_version(&reference.processor_id, &reference.version),
+            }
+        };
+        let mut statuses = Vec::new();
+        for (processor_id, version) in &plan.order {
+            let record = &plan.processors[processor_id].records[version];
+            let status = (|| -> Result<ImportStatus> {
+                let composition = self.validate_definition_with(&record.definition, &reader)?;
+                if record.composition != composition {
+                    return Err(composition_mismatch(record));
+                }
+                match fs::symlink_metadata(self.version_path(processor_id, version)) {
+                    Ok(_) if self.read_version(processor_id, version)? == *record => {
+                        Ok(ImportStatus::Present)
+                    }
+                    Ok(_) => Err(format!("Processor {processor_id} version {version} already exists with different content; imports never overwrite an immutable version")),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        Ok(ImportStatus::Imported)
+                    }
+                    Err(error) => Err(io_error(error)),
+                }
+            })();
+            match status {
+                Ok(status) => statuses.push(status),
+                Err(error) => plan.report.errors.push(ImportError {
+                    processor_id: processor_id.clone(),
+                    version: version.clone(),
+                    error,
+                }),
+            }
+        }
+        if !plan.report.errors.is_empty() {
+            return Ok(plan.report);
+        }
+        let new_processors: Vec<String> = plan
+            .processors
+            .keys()
+            .filter(|id| !self.root.join(id).join("current.json").exists())
+            .cloned()
+            .collect();
+        if dry_run {
+            for ((processor_id, version), status) in plan.order.iter().zip(statuses) {
+                let source = &plan.processors[processor_id];
+                plan.report.imported.push(ImportOutcome {
+                    record: source.records[version].clone(),
+                    status,
+                    current: source.current.version == *version,
+                });
+            }
+            return Ok(plan.report);
+        }
+        let lock = UpdateLock::acquire(&self.root)?;
+        for (processor_id, version) in &plan.order {
+            let source = &plan.processors[processor_id];
+            let record = &source.records[version];
+            match self.import_locked(record) {
+                Ok(status) => plan.report.imported.push(ImportOutcome {
+                    record: record.clone(),
+                    status,
+                    current: source.current.version == *version,
+                }),
+                Err(error) => {
+                    plan.report.errors.push(ImportError {
+                        processor_id: processor_id.clone(),
+                        version: version.clone(),
+                        error: format!(
+                            "{error}; earlier records in this import were written and remain valid"
+                        ),
+                    });
+                    return Ok(plan.report);
+                }
+            }
+        }
+        for processor_id in new_processors {
+            let current = &plan.processors[&processor_id].current;
+            atomic_json(
+                &self.root.join(&processor_id).join("current.json"),
+                &Current {
+                    format_version: FORMAT_VERSION,
+                    processor_id: processor_id.clone(),
+                    version: current.version.clone(),
+                    lineage: current.lineage.clone(),
+                },
+                true,
+            )?;
+        }
+        drop(lock);
+        Ok(plan.report)
     }
 
     /// Read identity, integrity, and publication metadata without dependency
@@ -638,18 +906,7 @@ impl ProcessorRegistry {
         validate_version(selected)?;
         let record: ProcessorVersion = read_json(&self.version_path(processor_id, selected))
             .map_err(|error| format!("Cannot read processor {processor_id} version {selected}: {error}. Use processor_list/search to discover identities and processor_get to inspect an available version"))?;
-        if record.format_version != FORMAT_VERSION
-            || record.processor_id != processor_id
-            || record.version != selected
-            || record.validation != DefinitionValidation::checked()
-        {
-            return Err("Invalid processor version envelope; inspect the requested identity/version and record metadata and reconcile before continuing".into());
-        }
-        validate_lineage(&record.lineage)?;
-        let hash = definition_hash(&record.definition)?;
-        if record.content_sha256 != hash || record.version != format!("sha256:{hash}") {
-            return Err("Processor definition content hash mismatch; inspect the exact version file and reconcile its authored definition before continuing".into());
-        }
+        verify_envelope(&record, processor_id, selected)?;
         Ok(record)
     }
 
@@ -740,6 +997,198 @@ impl ProcessorRegistry {
             .join(processor_id)
             .join("versions")
             .join(format!("{}.json", &version[7..]))
+    }
+}
+
+/// Identity, metadata and content-hash checks shared by exact reads and imports.
+fn verify_envelope(record: &ProcessorVersion, processor_id: &str, selected: &str) -> Result<()> {
+    validate_processor_id(processor_id)?;
+    validate_version(selected)?;
+    if record.format_version != FORMAT_VERSION
+        || record.processor_id != processor_id
+        || record.version != selected
+        || record.validation != DefinitionValidation::checked()
+    {
+        return Err("Invalid processor version envelope; inspect the requested identity/version and record metadata and reconcile before continuing".into());
+    }
+    validate_lineage(&record.lineage)?;
+    let hash = definition_hash(&record.definition)?;
+    if record.content_sha256 != hash || record.version != format!("sha256:{hash}") {
+        return Err("Processor definition content hash mismatch; inspect the exact version file and reconcile its authored definition before continuing".into());
+    }
+    Ok(())
+}
+fn composition_mismatch(record: &ProcessorVersion) -> String {
+    format!("Processor composition resolution mismatch for {} version {}; inspect the exact dependency versions and generated-source metadata and reconcile before installation", record.processor_id, record.version)
+}
+pub fn kind_of(definition: &ProcessorDefinition) -> ProcessorKind {
+    match definition {
+        ProcessorDefinition::Program(_) => ProcessorKind::Program,
+        ProcessorDefinition::Composition(_) => ProcessorKind::Composition,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportStatus {
+    Imported,
+    Present,
+}
+#[derive(Clone, Debug)]
+pub struct ImportOutcome {
+    pub record: ProcessorVersion,
+    pub status: ImportStatus,
+    /// Whether the source registry's current pointer selected this version.
+    pub current: bool,
+}
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ImportError {
+    pub processor_id: String,
+    pub version: String,
+    pub error: String,
+}
+/// Either `imported` (all records admitted or already present) or `errors`
+/// (nothing written unless an error message says otherwise).
+#[derive(Clone, Debug, Default)]
+pub struct ImportReport {
+    pub imported: Vec<ImportOutcome>,
+    pub errors: Vec<ImportError>,
+}
+struct SourceProcessor {
+    current: Current,
+    records: BTreeMap<String, ProcessorVersion>,
+}
+struct ImportPlan {
+    source: PathBuf,
+    processors: BTreeMap<String, SourceProcessor>,
+    /// Dependency-closure order of (processor_id, version).
+    order: Vec<(String, String)>,
+    report: ImportReport,
+}
+impl ImportPlan {
+    /// Plain JSON reads of `<src>/<pid>/current.json` and `versions/*.json`;
+    /// no lock, no permission check, no write. Envelope and hash failures are
+    /// collected per record so the caller sees every problem at once.
+    fn load_processor(
+        &mut self,
+        destination: &ProcessorRegistry,
+        processor_id: &str,
+        stack: &mut Vec<String>,
+    ) -> Result<()> {
+        if self.processors.contains_key(processor_id) {
+            return Ok(());
+        }
+        if stack.iter().any(|id| id == processor_id) {
+            return Err(format!(
+                "Cyclic processor dependency through {processor_id} in {}",
+                self.source.display()
+            ));
+        }
+        let directory = self.source.join(processor_id);
+        let read = |path: &Path| -> Result<Value> {
+            serde_json::from_slice(
+                &fs::read(path)
+                    .map_err(|error| format!("Cannot read {}: {error}", path.display()))?,
+            )
+            .map_err(|error| format!("Invalid JSON in {}: {error}", path.display()))
+        };
+        let current: Current = serde_json::from_value(read(&directory.join("current.json"))?)
+            .map_err(|error| format!("Invalid current.json for {processor_id}: {error}"))?;
+        if current.format_version != FORMAT_VERSION || current.processor_id != processor_id {
+            return Err(format!(
+                "Invalid processor current-version envelope for {processor_id} in {}",
+                self.source.display()
+            ));
+        }
+        validate_version(&current.version)?;
+        validate_lineage(&current.lineage)?;
+        let mut records = BTreeMap::new();
+        let versions = directory.join("versions");
+        let mut names: Vec<String> = fs::read_dir(&versions)
+            .map_err(|error| format!("Cannot read {}: {error}", versions.display()))?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| {
+                name.strip_suffix(".json")
+                    .is_some_and(|hex| is_hex(hex, 64))
+            })
+            .collect();
+        names.sort();
+        for name in names {
+            let version = format!("sha256:{}", &name[..64]);
+            let record: std::result::Result<ProcessorVersion, String> = read(&versions.join(&name))
+                .and_then(|value| {
+                    serde_json::from_value(value)
+                        .map_err(|error| format!("Invalid version record: {error}"))
+                })
+                .and_then(|record: ProcessorVersion| {
+                    verify_envelope(&record, processor_id, &version)?;
+                    Ok(record)
+                });
+            match record {
+                Ok(record) => {
+                    records.insert(version, record);
+                }
+                Err(error) => self.report.errors.push(ImportError {
+                    processor_id: processor_id.to_string(),
+                    version,
+                    error,
+                }),
+            }
+        }
+        if records.is_empty() && self.report.errors.is_empty() {
+            return Err(format!(
+                "Processor {processor_id} has no version files in {}",
+                self.source.display()
+            ));
+        }
+        if !records.contains_key(&current.version) && self.report.errors.is_empty() {
+            return Err(format!(
+                "Processor {processor_id} current version {} has no version file in {}",
+                current.version,
+                self.source.display()
+            ));
+        }
+        stack.push(processor_id.to_string());
+        let mut dependencies: Vec<ProcessorReference> = Vec::new();
+        for record in records.values() {
+            if let Some(resolution) = &record.composition {
+                dependencies.extend(resolution.dependencies.values().cloned());
+            }
+        }
+        for dependency in &dependencies {
+            if dependency.processor_id == processor_id {
+                continue;
+            }
+            if self
+                .source
+                .join(&dependency.processor_id)
+                .join("current.json")
+                .is_file()
+            {
+                self.load_processor(destination, &dependency.processor_id, stack)?;
+            } else if destination
+                .read_version(&dependency.processor_id, &dependency.version)
+                .is_err()
+            {
+                return Err(format!(
+                    "Dependency {} version {} exists neither in {} nor in this registry",
+                    dependency.processor_id,
+                    dependency.version,
+                    self.source.display()
+                ));
+            }
+        }
+        stack.pop();
+        // Dependencies were pushed first; the processor's own versions follow.
+        for version in records.keys() {
+            self.order.push((processor_id.to_string(), version.clone()));
+        }
+        self.processors.insert(
+            processor_id.to_string(),
+            SourceProcessor { current, records },
+        );
+        Ok(())
     }
 }
 

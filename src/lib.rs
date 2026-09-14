@@ -4,7 +4,10 @@
 //! [`ProgramInstance::execute`] without JSON-RPC or a transport connection.
 //! Compilation is delegated to an operator-configured external DDlog driver.
 pub use lemmalog_syntax as syntax;
+pub mod inspection;
 pub mod instance;
+mod telemetry;
+pub mod worlds;
 pub use instance::ProgramInstance;
 mod bounded;
 mod checkpoint;
@@ -27,6 +30,18 @@ pub mod star;
 pub use lower::{lower, lower_with_operators, Schema};
 pub use operations::{AgentProgram, Operation};
 
+/// Build-time identity of this runtime binary, recorded by `build.rs`.
+/// `commit` is null when the crate was not built from a git checkout.
+pub fn runtime_info() -> Value {
+    let commit = env!("DDLOG_RUNTIME_COMMIT");
+    json!({
+        "commit": if commit.is_empty() { Value::Null } else { Value::from(commit) },
+        "dirty": env!("DDLOG_RUNTIME_DIRTY") == "true",
+        "crate_version": env!("CARGO_PKG_VERSION"),
+        "schema_version": 1,
+    })
+}
+
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -44,12 +59,29 @@ struct Runtime {
     group: processes::Group,
 }
 impl Runtime {
-    fn start(binary: &Path, control: &processes::ProcessControl) -> Result<Self> {
+    fn start(
+        binary: &Path,
+        control: &processes::ProcessControl,
+        inspection: Option<&Path>,
+        observer: &ObserverOptions,
+    ) -> Result<Self> {
         let mut command = Command::new(binary);
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+        // Only configured capture options are added; the inherited environment
+        // is otherwise left alone, so an operator's own DDLOG_OBSERVER_* exports
+        // still reach a library-hosted child.
+        if let Some(path) = inspection {
+            command.env("DDLOG_OBSERVER_FILE", path);
+        }
+        if observer.detail_full {
+            command.env("DDLOG_OBSERVER_DETAIL", "full");
+        }
+        if observer.rotate {
+            command.env("DDLOG_OBSERVER_ROTATE", "1");
+        }
         processes::separate_group(&mut command, control);
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         let group = control.track(child.id());
@@ -152,6 +184,17 @@ impl Drop for Runtime {
     }
 }
 
+/// Native capture options passed to the child as `DDLOG_OBSERVER_DETAIL=full`
+/// and `DDLOG_OBSERVER_ROTATE=1`. Both are off for library users (the child
+/// then inherits whatever the operator exported); managed worlds turn both on
+/// so activity keeps flowing for long-lived instances.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ObserverOptions {
+    /// Schedule, message, progress and arrangement events, not only topology.
+    pub detail_full: bool,
+    /// Rotate the capture at the worker byte budget instead of truncating.
+    pub rotate: bool,
+}
 /// One session, one typed program. Compilation and replay happen before activation.
 /// The external build driver receives source path and desired executable path.
 /// Only a trusted operator configures this executable; MCP callers cannot select it.
@@ -167,6 +210,8 @@ pub struct Backend {
     active_source: String,
     failed: bool,
     control: processes::ProcessControl,
+    inspection_log: Option<PathBuf>,
+    observer: ObserverOptions,
 }
 impl Backend {
     pub fn new(root: PathBuf, driver: PathBuf) -> Self {
@@ -182,7 +227,28 @@ impl Backend {
             active_source: String::new(),
             failed: false,
             control: processes::ProcessControl::default(),
+            inspection_log: None,
+            observer: ObserverOptions::default(),
         }
+    }
+    /// Capture options for the native child; only meaningful with an
+    /// inspection log. Takes effect at the next install.
+    pub fn set_observer(&mut self, observer: ObserverOptions) {
+        self.observer = observer;
+    }
+    /// Refresh child liveness without performing a graph operation.
+    pub fn observed_health(&mut self) -> &'static str {
+        if let Some(runtime) = &mut self.runtime {
+            match runtime.child.try_wait() {
+                Ok(None) => (),
+                Ok(Some(_)) | Err(_) => self.failed = true,
+            }
+        }
+        self.health()
+    }
+    /// Native execution process only; not the shared embedding host.
+    pub fn runtime_pid(&self) -> Option<u32> {
+        self.runtime.as_ref().map(|runtime| runtime.child.id())
     }
     pub fn health(&self) -> &'static str {
         if self.failed {
@@ -199,6 +265,11 @@ impl Backend {
     }
     pub fn program_source(&self) -> &str {
         &self.active_source
+    }
+    /// SHA-256 of the lowered `program.dl` that the native child was built from.
+    pub fn source_sha256(&self) -> String {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(self.active_source.as_bytes()))
     }
     pub fn schemas(&self) -> &BTreeMap<String, Schema> {
         &self.schema
@@ -279,7 +350,12 @@ impl Backend {
                 dir.join("build.log").display()
             ));
         }
-        let mut runtime = Runtime::start(&binary, &self.control)?;
+        let mut runtime = Runtime::start(
+            &binary,
+            &self.control,
+            self.inspection_log.as_deref(),
+            &self.observer,
+        )?;
         let mut replay = String::from("start;\n");
         for (_, fact) in self.facts.keys() {
             replay.push_str(&format!("insert {fact};\n"));
@@ -454,6 +530,41 @@ impl Backend {
                 .push(values.clone());
         }
         Ok(result)
+    }
+    /// Streamed row count of one maintained output relation. Rows are decoded
+    /// one native record at a time and never accumulated; a malformed record
+    /// fails the count after the response is drained, keeping the owner usable.
+    pub fn count_rows(&mut self, predicate: &str) -> Result<u64> {
+        let schema = self
+            .schema
+            .get(predicate)
+            .ok_or("Unknown relation")?
+            .clone();
+        if schema.input {
+            return Err(
+                "Row counts scan output relations; inputs are counted from retained facts".into(),
+            );
+        }
+        let runtime = self.runtime.as_mut().ok_or("Install a program first")?;
+        let mut count = 0_u64;
+        let mut error = None;
+        let exchange = runtime.exchange_stream(&format!("dump R_{predicate};"), |line| {
+            if error.is_some() {
+                return;
+            }
+            match line.and_then(|line| rows::decode_rows(line, predicate, &schema.fields)) {
+                Ok(decoded) => count += decoded.len() as u64,
+                Err(reason) => error = Some(reason),
+            }
+        });
+        if let Err(error) = exchange {
+            self.runtime = None;
+            self.failed = true;
+            return Err(format!(
+                "Runtime unavailable; reconcile outstanding work: {error}"
+            ));
+        }
+        error.map_or(Ok(count), Err)
     }
     pub fn why(&mut self, rule: usize) -> Result<Value> {
         // Evidence relation names are discovered in the lowered source, preventing command injection.
