@@ -17,7 +17,7 @@ struct Control {
     groups: Mutex<BTreeSet<u32>>,
 }
 impl ProcessControl {
-    #[cfg(all(feature = "mcp", unix))]
+    #[cfg(unix)]
     pub fn hosted() -> Self {
         Self {
             inner: Arc::new(Control {
@@ -26,10 +26,13 @@ impl ProcessControl {
             }),
         }
     }
+    pub fn tracked_pids(&self) -> Vec<u32> {
+        self.inner.groups.lock().unwrap().iter().copied().collect()
+    }
     pub fn stopped(&self) -> bool {
         self.inner.stopped.load(Ordering::SeqCst)
     }
-    #[cfg(all(feature = "mcp", unix))]
+    #[cfg(unix)]
     pub fn stop(&self) {
         self.inner.stopped.store(true, Ordering::SeqCst);
         for &pid in self.inner.groups.lock().unwrap().iter() {

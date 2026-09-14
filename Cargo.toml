@@ -16,6 +16,7 @@ lemmalog-syntax = { path = "crates/syntax", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
+regex = "1"
 
 iceberg = { git = "https://github.com/apache/iceberg-rust.git", rev = "4d83bc77dc10cff851a3ef427c451ff977bc3643", optional = true }
 iceberg-catalog-sql = { git = "https://github.com/apache/iceberg-rust.git", rev = "4d83bc77dc10cff851a3ef427c451ff977bc3643", optional = true }

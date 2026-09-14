@@ -35,6 +35,7 @@ impl Drop for TestDirectory {
 }
 fn definition() -> ProcessorDefinition {
     ProcessorDefinition::Program(ProgramDefinition {
+        inspection: None,
         rules: "visible(X) :- item(X).".into(),
         schemas: json!({
             "item": {"input":true,"fields":["string"]},
@@ -265,6 +266,7 @@ fn registered_validation_supports_public_results_and_rejects_private_protocol() 
     let directory = TestDirectory::new();
     let registry = directory.registry();
     let valid = ProcessorDefinition::Program(ProgramDefinition {
+        inspection: None,
         rules: "reviewed(E,R,O) :- agent_result(E,R,O).".into(),
         schemas: json!({"reviewed":{"input":false,"fields":["string","int","string"]}}),
         operation: Some(RegisteredOperationBinding {
@@ -991,5 +993,58 @@ fn independent_processes_cannot_both_commit_one_lifecycle_revision() {
     assert_eq!(
         registry.list(10, None, false).unwrap().processors[0].lifecycle_revision,
         2
+    );
+}
+
+#[test]
+fn inspection_metadata_is_optional_immutable_and_validated() {
+    use ddlog_runtime::inspection::InspectionMetadata;
+    use sha2::{Digest, Sha256};
+    let directory = TestDirectory::new();
+    let registry = directory.registry();
+    let legacy = definition();
+    let old_json = json!({"rules":"visible(X) :- item(X).", "schemas":{
+        "item":{"input":true,"fields":["string"]},
+        "visible":{"input":false,"fields":["string"]}},"operation":null});
+    // Exact pre-metadata serialization and content address stay unchanged.
+    assert_eq!(serde_json::to_value(&legacy).unwrap(), old_json);
+    let expected = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&old_json).unwrap())
+    );
+    let first = registry.create(legacy.clone(), None).unwrap();
+    assert_eq!(first.content_sha256, expected);
+    let mut annotated = legacy.clone();
+    program(&mut annotated).inspection = Some(InspectionMetadata::default());
+    let next = registry
+        .publish(&first.processor_id, annotated.clone(), &first.version, None)
+        .unwrap();
+    assert_ne!(first.version, next.version);
+    assert_eq!(
+        registry
+            .get(&first.processor_id, Some(&first.version))
+            .unwrap()
+            .definition,
+        legacy
+    );
+    assert_eq!(
+        registry
+            .get(&first.processor_id, Some(&next.version))
+            .unwrap()
+            .definition,
+        annotated
+    );
+    program(&mut annotated)
+        .inspection
+        .as_mut()
+        .unwrap()
+        .schema_version = 999;
+    assert!(registry.create(annotated.clone(), None).is_err());
+    assert!(registry
+        .publish(&first.processor_id, annotated, &next.version, None)
+        .is_err());
+    assert_eq!(
+        registry.get(&first.processor_id, None).unwrap().version,
+        next.version
     );
 }

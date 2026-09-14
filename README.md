@@ -49,6 +49,15 @@ Library callers can explicitly save and restore pure-program local checkpoints. 
 
 A runnable library example is [`examples/program.rs`](examples/program.rs). Installation invokes native compilation; pure parsing, lowering and registry validation do not. The workspace does not require the MCP feature for library use.
 
+## World control plane
+
+`cargo build --locked --bin ddlog-worlds` builds an explicitly launched owner for
+registered worlds. It provides asynchronous start/stop, persistent instance history,
+real process CPU/RSS, and opt-in native topology through versioned inspection
+contracts. Registration alone never starts execution. See [world lifecycle and
+protocol](docs/worlds.md) and [inspection metadata](docs/inspection.md). Existing
+`ProgramInstance` and shared-host callers remain supported.
+
 ## MCP
 
 ```sh
@@ -92,6 +101,6 @@ cargo build --locked --features mcp --bin lemmalog-ddlog-mcp
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-These tests need Rust and Python 3.11+, but no DDlog compiler or provider. Python host/MCP tests use explicitly simulated graph fixtures. [Native acceptance](docs/building.md#native-acceptance) is a separate operator-configured step. Compatibility fixtures captured before extraction check old registry records, content hashes, generated source, bundled native source and MCP schemas.
+These tests need Rust and Python 3.11+, but no DDlog compiler or provider. `--all-features` includes the Iceberg checkpoint feature, whose pinned `iceberg` revision needs Rust 1.95 (`cargo +1.95.0 …`, see [Iceberg checkpoints](docs/iceberg-checkpoints.md)); the default feature set and `--features mcp` build on the 1.94 toolchain. Python host/MCP tests use explicitly simulated graph fixtures. [Native acceptance](docs/building.md#native-acceptance) is a separate operator-configured step. Compatibility fixtures captured before extraction check old registry records, content hashes, generated source, bundled native source and MCP schemas.
 
 MIT licensed; the upstream copyright notice is retained in [LICENSE](LICENSE).
