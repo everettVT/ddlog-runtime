@@ -18,6 +18,8 @@ import re
 import signal
 import sys
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 MCP_REQUEST_LIMIT = 1024 * 1024
 MCP_RESPONSE_LIMIT = 4 * 1024 * 1024
@@ -50,10 +52,23 @@ class InferenceConfig:
     top_p: float = 0.9
     reasoning_effort: str = 'high'
     reasoning_enabled: bool = True
+    # 'modal' (default): the operator's Modal profile authenticates a `modal curl` call.
+    # 'direct': HTTPS from this process with `Authorization: Bearer $<api_key_env>`; the key is
+    # read from the environment at call time and never enters the config, hashes or results.
+    transport: str = 'modal'
+    api_key_env: str = ''
 
     def __post_init__(self):
         if type(self.format_version) is not int or self.format_version != 1:
             raise ValueError('Unsupported config format_version; use integer 1')
+        if self.transport not in ('modal', 'direct'):
+            raise ValueError('transport must be modal or direct')
+        if not isinstance(self.api_key_env, str) or (self.api_key_env and not re.fullmatch(r'[A-Z][A-Z0-9_]{0,127}', self.api_key_env)):
+            raise ValueError('api_key_env must name an environment variable (uppercase letters, digits, underscores)')
+        if self.transport == 'direct' and not self.api_key_env:
+            raise ValueError('direct transport requires api_key_env naming the variable that holds the bearer key')
+        if self.transport == 'modal' and self.api_key_env:
+            raise ValueError('api_key_env applies to the direct transport only')
         if not isinstance(self.operation, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.:-]{0,127}', self.operation):
             raise ValueError('operation must be a nonempty bounded operation name')
         if not isinstance(self.endpoint, str) or len(self.endpoint) > 2048 or any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in self.endpoint):
@@ -86,7 +101,7 @@ class InferenceConfig:
     @classmethod
     def from_dict(cls, value):
         required = {'format_version', 'operation', 'endpoint', 'model', 'system_prompt'}
-        allowed = required | {'max_tokens', 'temperature', 'top_p', 'reasoning_effort', 'reasoning_enabled'}
+        allowed = required | {'max_tokens', 'temperature', 'top_p', 'reasoning_effort', 'reasoning_enabled', 'transport', 'api_key_env'}
         if not isinstance(value, dict) or set(value) - allowed or required - set(value):
             raise ValueError('Invalid inference config fields; use the supported public fields only, without credentials')
         return cls(**value)
@@ -107,7 +122,12 @@ class InferenceConfig:
         return cls.from_dict(value)
 
     def public_dict(self):
-        return asdict(self)
+        # Transport fields appear only for the direct transport so existing Modal configs keep
+        # their bound hashes; neither field is a credential.
+        public = asdict(self)
+        if self.transport == 'modal':
+            del public['transport'], public['api_key_env']
+        return public
 
     @property
     def config_sha256(self):
@@ -205,6 +225,9 @@ class ProviderClient:
             'reasoning': {'enabled': self.config.reasoning_enabled}, 'stream': False})
         if len(request) > 2 * MCP_REQUEST_LIMIT:
             raise WorkerError('Provider request exceeds the bounded input size; reduce the next request before admission')
+        if self.config.transport == 'direct':
+            raw = await self._direct(request)
+            return self._result(request, raw)
         arguments = (self.modal_bin, 'curl', '--silent', '--show-error', '--fail-with-body', '--max-time', '600',
                      '-H', 'Content-Type: application/json', '--data-binary', '@-', self.config.endpoint)
         try:
@@ -243,6 +266,35 @@ class ProviderClient:
             raise
         if returncode != 0:
             raise WorkerError(f'Modal transport exited with status {returncode}; outcome uncertain, inspect provider state and reconcile the existing claim without automatic retry', uncertain=True)
+        return self._result(request, raw)
+
+    async def _direct(self, request):
+        key = os.environ.get(self.config.api_key_env, '')
+        if not key.strip() or key.startswith('REPLACE_ME'):
+            raise WorkerError(f'Direct transport needs the bearer key in ${self.config.api_key_env}; nothing was sent')
+        headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer ' + key.strip()}
+        for variable, header in (('OPENROUTER_HTTP_REFERER', 'HTTP-Referer'), ('OPENROUTER_APP_TITLE', 'X-Title')):
+            value = os.environ.get(variable, '').strip()
+            if value and all(32 <= ord(character) < 127 for character in value) and len(value) <= 256:
+                headers[header] = value
+        cap = self.response_cap
+
+        def call():
+            try:
+                with urlopen(Request(self.config.endpoint, data=request, headers=headers, method='POST'), timeout=self.timeout) as response:
+                    body = response.read(cap + 1)
+            except HTTPError as error:
+                detail = error.read(4096).decode('utf-8', 'replace') if error.fp else ''
+                raise WorkerError(f'Provider answered HTTP {error.code}; outcome uncertain, inspect provider state and reconcile the existing claim without automatic retry: {detail[:300]}', uncertain=True) from None
+            except (URLError, OSError, TimeoutError) as error:
+                raise WorkerError('Provider transport interrupted or timed out; outcome uncertain, reconcile the claim/provider and do not automatically retry', uncertain=True) from None
+            if len(body) > cap:
+                raise WorkerError('Provider response exceeded its bound; outcome uncertain, reconcile the claim and provider before resubmission', uncertain=True)
+            return body
+
+        return await asyncio.to_thread(call)
+
+    def _result(self, request, raw):
         try:
             response = json.loads(raw)
             choices = response['choices']

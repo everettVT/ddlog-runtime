@@ -27,7 +27,7 @@ mod processes;
 pub mod registry;
 pub mod rows;
 pub mod star;
-pub use lower::{lower, lower_with_operators, Schema};
+pub use lower::{lower, lower_with_operators, lower_with_options, LoweringOptions, Schema};
 pub use operations::{AgentProgram, Operation};
 
 /// Build-time identity of this runtime binary, recorded by `build.rs`.
@@ -43,7 +43,7 @@ pub fn runtime_info() -> Value {
 }
 
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -212,6 +212,10 @@ pub struct Backend {
     control: processes::ProcessControl,
     inspection_log: Option<PathBuf>,
     observer: ObserverOptions,
+    /// Lowering version requested for the next install; library default 1.
+    lowering_version: u32,
+    /// Options the active program's text was actually generated under.
+    active_lowering: LoweringOptions,
 }
 impl Backend {
     pub fn new(root: PathBuf, driver: PathBuf) -> Self {
@@ -229,12 +233,37 @@ impl Backend {
             control: processes::ProcessControl::default(),
             inspection_log: None,
             observer: ObserverOptions::default(),
+            lowering_version: 1,
+            active_lowering: LoweringOptions::VERSION_1,
         }
     }
     /// Capture options for the native child; only meaningful with an
     /// inspection log. Takes effect at the next install.
     pub fn set_observer(&mut self, observer: ObserverOptions) {
         self.observer = observer;
+    }
+    /// Lowering version for the next install (1, the library default, or 2,
+    /// the lean form). It changes the generated text, never a registered
+    /// record: a composition pinned at version 1 builds as version 2 text
+    /// while `processor_get` keeps verifying the registered hash.
+    pub fn set_lowering_version(&mut self, version: u32) -> Result<()> {
+        LoweringOptions::for_version(version)?;
+        self.lowering_version = version;
+        Ok(())
+    }
+    /// Lowering version the active program was built under (the requested
+    /// version until a program is installed).
+    pub fn lowering_version(&self) -> u32 {
+        if self.runtime.is_some() {
+            self.active_lowering.version().unwrap_or(0)
+        } else {
+            self.lowering_version
+        }
+    }
+    /// Options of the active program's text: `explain` says whether
+    /// [`Self::why`] can answer.
+    pub fn lowering(&self) -> LoweringOptions {
+        self.active_lowering
     }
     /// Refresh child liveness without performing a graph operation.
     pub fn observed_health(&mut self) -> &'static str {
@@ -286,8 +315,12 @@ impl Backend {
         registry: &registry::ProcessorRegistry,
         manifest: &composition::CompositionManifest,
     ) -> Result<composition::CompositionResolution> {
-        let compiled = registry.compile_composition(manifest)?;
-        self.install_source(compiled.source, compiled.schemas)?;
+        let compiled = registry.compile_composition_versioned(manifest, self.lowering_version)?;
+        self.install_source(
+            compiled.source,
+            compiled.schemas,
+            LoweringOptions::for_version(self.lowering_version)?,
+        )?;
         Ok(compiled.resolution)
     }
     pub fn install_with_operators(
@@ -298,13 +331,27 @@ impl Backend {
     ) -> Result<Value> {
         let schema: BTreeMap<String, Schema> =
             serde_json::from_value(schemas).map_err(|e| e.to_string())?;
-        let source = lower_with_operators(rules, &schema, operators)?;
-        self.install_source(source, schema)
+        self.install_program(rules, schema, operators, None)
+    }
+    /// Lower an ordinary program under the requested lowering version.
+    /// `exports` are the interface outputs that stay `output relation` under
+    /// version 2; `None` keeps every derived relation public.
+    pub(crate) fn install_program(
+        &mut self,
+        rules: &str,
+        schema: BTreeMap<String, Schema>,
+        operators: &[star::Operator],
+        exports: Option<&BTreeSet<String>>,
+    ) -> Result<Value> {
+        let options = LoweringOptions::for_version(self.lowering_version)?;
+        let source = lower_with_options(rules, &schema, operators, &options, exports)?;
+        self.install_source(source, schema, options)
     }
     fn install_source(
         &mut self,
         source: String,
         schema: BTreeMap<String, Schema>,
+        lowering: LoweringOptions,
     ) -> Result<Value> {
         if !self.facts.is_empty()
             && self
@@ -371,10 +418,12 @@ impl Backend {
         self.failed = false;
         self.schema = schema;
         self.active_source = source;
+        self.active_lowering = lowering;
         self.version = version;
         self.revision = revision;
         Ok(
-            json!({"backend":"ddlog/differential-dataflow", "version":self.version, "replayed_facts":self.facts.len()}),
+            json!({"backend":"ddlog/differential-dataflow", "version":self.version, "replayed_facts":self.facts.len(),
+                "lowering_version":lowering.version()}),
         )
     }
     fn fact(&self, predicate: &str, values: &[Value]) -> Result<String> {
@@ -567,6 +616,12 @@ impl Backend {
         error.map_or(Ok(count), Err)
     }
     pub fn why(&mut self, rule: usize) -> Result<Value> {
+        if !self.active_lowering.explain {
+            return Err(format!(
+                "Explanations were not compiled for this instance: lowering version {} builds without Evidence relations. Build with lowering version 1 to read direct rule witnesses",
+                self.active_lowering.version().unwrap_or(0)
+            ));
+        }
         // Evidence relation names are discovered in the lowered source, preventing command injection.
         let source = &self.active_source;
         if !source.contains(&format!("output relation Evidence{rule}(")) {

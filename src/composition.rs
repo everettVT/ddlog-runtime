@@ -1,7 +1,7 @@
 //! Pure, typed composition of exact leaf processor versions in one DDlog graph.
 //! Connections become rules in the same parsed AST; no runtime copies facts
 //! between processors and no current-version pointer participates in lowering.
-use super::lower::{ident, lower_clauses_with_operators};
+use super::lower::{ident, lower_clauses, LoweringOptions};
 use super::registry::{
     ProcessorDefinition, ProcessorReference, ProcessorVersion, ProgramDefinition,
 };
@@ -58,9 +58,24 @@ pub struct CompositionResolution {
     /// Public interface names mapped to deterministic generated relation names.
     pub inputs: BTreeMap<String, String>,
     pub outputs: BTreeMap<String, String>,
-    /// Index equals the zero-based generated Evidence relation index.
+    /// Index equals the zero-based generated rule index (the `Evidence<n>`
+    /// relation under lowering version 1). Bindings aliased away by version 2
+    /// generate no rule and appear as `alias_of` in `relations` instead.
     pub rules: Vec<Value>,
     pub relations: BTreeMap<String, Value>,
+    /// Lowering that `generated_source_sha256` was computed under; absent in
+    /// records written before version 2 existed, which are version 1.
+    #[serde(
+        default = "default_lowering_version",
+        skip_serializing_if = "is_version_1"
+    )]
+    pub lowering_version: u32,
+}
+fn default_lowering_version() -> u32 {
+    1
+}
+fn is_version_1(version: &u32) -> bool {
+    *version == 1
 }
 #[derive(Clone, Debug)]
 pub struct CompiledComposition {
@@ -184,15 +199,30 @@ fn compatible(from: &str, source: &[String], to: &Endpoint, destination: &[Strin
     Ok(())
 }
 struct Expansion {
+    options: LoweringOptions,
     schemas: BTreeMap<String, Schema>,
     clauses: Vec<Clause>,
     operators: Vec<Operator>,
     origins: Vec<Value>,
     relations: BTreeMap<String, Value>,
     dependencies: BTreeMap<String, ProcessorReference>,
+    /// Bound target relation to its immediate source, when bindings are aliased.
+    aliases: BTreeMap<String, String>,
+    /// Top-level external outputs and the relations they copy directly.
+    exports: BTreeSet<String>,
     next_node: usize,
 }
 impl Expansion {
+    /// A binding is exactly one source feeding one target: a copy rule under
+    /// version 1, a name substitution under `alias_bindings`.
+    fn bind(&mut self, to: &Port, from: &str, origin: Value) {
+        if self.options.alias_bindings {
+            self.aliases.insert(to.name.clone(), from.to_string());
+        } else {
+            self.clauses.push(bridge(&to.name, from, to.fields.len()));
+            self.origins.push(origin);
+        }
+    }
     fn program(
         &mut self,
         program: &ProgramDefinition,
@@ -259,6 +289,59 @@ impl Expansion {
             inputs: interface.inputs.iter().map(port).collect(),
             outputs: interface.outputs.iter().map(port).collect(),
         })
+    }
+
+    /// Substitute every aliased target by its ultimate source. A target is a
+    /// node (or nested composition) input with exactly one source; sources are
+    /// node outputs, external inputs or an enclosing composition's inputs, so
+    /// chains only cross nesting levels outward and terminate.
+    fn resolve_aliases(&mut self) -> Result<()> {
+        if self.aliases.is_empty() {
+            return Ok(());
+        }
+        let mut resolved: BTreeMap<String, String> = BTreeMap::new();
+        for target in self.aliases.keys() {
+            let mut name = target.as_str();
+            let mut steps = 0;
+            while let Some(next) = self.aliases.get(name) {
+                name = next;
+                steps += 1;
+                if steps > self.aliases.len() {
+                    return Err(format!("Cyclic binding alias through {target}"));
+                }
+            }
+            resolved.insert(target.clone(), name.to_string());
+        }
+        let rename = |name: &str| {
+            resolved
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.to_string())
+        };
+        for clause in &mut self.clauses {
+            clause.head.pred = rename(&clause.head.pred);
+            for literal in &mut clause.body {
+                if let Lit::Pos(atom) | Lit::Neg(atom) = literal {
+                    atom.pred = rename(&atom.pred);
+                }
+            }
+        }
+        let names: BTreeMap<String, String> = self
+            .schemas
+            .keys()
+            .map(|name| (name.clone(), rename(name)))
+            .collect();
+        for operator in &mut self.operators {
+            *operator = operator.renamed(&names);
+        }
+        self.exports = self.exports.iter().map(|name| rename(name)).collect();
+        for (target, source) in &resolved {
+            self.schemas.remove(target);
+            if let Some(relation) = self.relations.get_mut(target) {
+                relation["alias_of"] = json!(source);
+            }
+        }
+        Ok(())
     }
 
     fn manifest(
@@ -346,9 +429,7 @@ impl Expansion {
                 if !assigned.insert(target.clone()) {
                     return Err(format!("Multiple sources for input {}.{}; declare a separate union program to combine sources", qualified(scope, &target.node), target.relation));
                 }
-                self.clauses
-                    .push(bridge(&to.name, &physical, to.fields.len()));
-                self.origins.push(json!({"kind":"input_binding","scope":scope,"owner":owner,"input":name,"to":absolute(scope, target)}));
+                self.bind(to, &physical, json!({"kind":"input_binding","scope":scope,"owner":owner,"input":name,"to":absolute(scope, target)}));
             }
             inputs.insert(
                 name.clone(),
@@ -374,9 +455,7 @@ impl Expansion {
             if !assigned.insert(binding.to.clone()) {
                 return Err(format!("Multiple sources for input {}.{}; declare a separate union program to combine sources", qualified(scope, &binding.to.node), binding.to.relation));
             }
-            self.clauses
-                .push(bridge(&to.name, &from.name, from.fields.len()));
-            self.origins.push(json!({"kind":"processor_binding","scope":scope,"owner":owner,"from":absolute(scope, &binding.from),"to":absolute(scope, &binding.to)}));
+            self.bind(to, &from.name, json!({"kind":"processor_binding","scope":scope,"owner":owner,"from":absolute(scope, &binding.from),"to":absolute(scope, &binding.to)}));
         }
         for (alias, node) in &nodes {
             for relation in node.inputs.keys() {
@@ -411,6 +490,10 @@ impl Expansion {
             self.clauses
                 .push(bridge(&physical, &from.name, from.fields.len()));
             self.origins.push(json!({"kind":"output_binding","scope":scope,"owner":owner,"output":name,"from":absolute(scope, output)}));
+            if index.is_none() {
+                self.exports.insert(physical.clone());
+                self.exports.insert(from.name.clone());
+            }
             self.relations.insert(physical.clone(), json!({"kind":"external_output","scope":scope,"owner":owner,"output":name,"from":absolute(scope, output),"fields":from.fields}));
             outputs.insert(
                 name.clone(),
@@ -426,22 +509,45 @@ impl Expansion {
 
 /// Composition is source expansion. The ordinary lowerer decides which final
 /// relational programs are supported; there is no additional node-cycle rule.
+/// This is lowering version 1, the form every registered resolution before
+/// version 2 records.
 pub fn compile_resolved(
     manifest: &CompositionManifest,
     programs: &BTreeMap<String, ResolvedNode>,
 ) -> Result<CompiledComposition> {
+    compile_resolved_with(manifest, programs, 1)
+}
+
+/// Expand and lower under a numbered lowering version. Public relation names
+/// and contents are identical under every version; only the generated text,
+/// its hash and the `relations` metadata (`alias_of`) differ.
+pub fn compile_resolved_with(
+    manifest: &CompositionManifest,
+    programs: &BTreeMap<String, ResolvedNode>,
+    lowering_version: u32,
+) -> Result<CompiledComposition> {
+    let options = LoweringOptions::for_version(lowering_version)?;
     let mut expansion = Expansion {
+        options,
         schemas: BTreeMap::new(),
         clauses: Vec::new(),
         operators: Vec::new(),
         origins: Vec::new(),
         relations: BTreeMap::new(),
         dependencies: BTreeMap::new(),
+        aliases: BTreeMap::new(),
+        exports: BTreeSet::new(),
         next_node: 0,
     };
     let ports = expansion.manifest(manifest, programs, "", None, None)?;
-    let source =
-        lower_clauses_with_operators(&expansion.clauses, &expansion.schemas, &expansion.operators)?;
+    expansion.resolve_aliases()?;
+    let source = lower_clauses(
+        &expansion.clauses,
+        &expansion.schemas,
+        &expansion.operators,
+        &options,
+        Some(&expansion.exports),
+    )?;
     let resolution = CompositionResolution {
         nodes: manifest.nodes.clone(),
         dependencies: expansion.dependencies,
@@ -458,6 +564,7 @@ pub fn compile_resolved(
             .collect(),
         rules: expansion.origins,
         relations: expansion.relations,
+        lowering_version,
     };
     Ok(CompiledComposition {
         source,

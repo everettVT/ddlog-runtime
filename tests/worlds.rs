@@ -1434,3 +1434,300 @@ fn with_groups_fails(manager: &WorldManager, groups: Value) -> String {
 fn manager_capture_exists(f: &Fixture, definition: &WorldDefinition) -> bool {
     capture_file(f, definition).exists()
 }
+/// Register `Leaf` (interface program), `Inner` (composition of one leaf) and
+/// `Outer` (composition of `inner` and a second leaf), optionally with authored
+/// metadata on the outer composition; returns (leaf pin, outer world).
+fn nested_composition(
+    manager: &WorldManager,
+    inspection: Option<Value>,
+) -> (Value, WorldDefinition) {
+    let register = |name: &str, definition: Value| {
+        manager
+            .register(RegisterRequest {
+                name: name.into(),
+                description: String::new(),
+                library_id: None,
+                definition,
+                git_provenance: None,
+            })
+            .unwrap()
+    };
+    let leaf = register(
+        "Leaf",
+        json!({"rules":"echo(N,S) :- source(N,S).","schemas":{"source":{"input":true,"fields":["int","string"]},"echo":{"input":false,"fields":["int","string"]}},"interface":{"inputs":["source"],"outputs":["echo"]}}),
+    );
+    let pin =
+        |record: &Value| json!({"processor_id":record["processor_id"],"version":record["version"]});
+    let inner = register(
+        "Inner",
+        json!({"composition":{"nodes":{"leaf":pin(&leaf)},"inputs":{"rows":{"fields":["int","string"],"targets":[{"node":"leaf","relation":"source"}]}},"bindings":[],"outputs":{"copies":{"node":"leaf","relation":"echo"}}}}),
+    );
+    let mut outer = json!({"composition":{"nodes":{"inner":pin(&inner),"second":pin(&leaf)},"inputs":{"rows":{"fields":["int","string"],"targets":[{"node":"inner","relation":"rows"}]}},"bindings":[{"from":{"node":"inner","relation":"copies"},"to":{"node":"second","relation":"source"}}],"outputs":{"copies":{"node":"second","relation":"echo"}}}});
+    if let Some(inspection) = inspection {
+        outer["inspection"] = inspection;
+    }
+    let outer = register("Outer", outer);
+    (
+        pin(&leaf),
+        WorldDefinition {
+            label: "Outer".into(),
+            processor: ProcessorReference {
+                processor_id: outer["processor_id"].as_str().unwrap().into(),
+                version: outer["version"].as_str().unwrap().into(),
+            },
+            purpose: "instance".into(),
+            scenarios: vec![],
+        },
+    )
+}
+/// Synthetic capture of a composition build: relation operators named after the
+/// generated `Input_`/`Composite0_`/`Module1_`/`Module2_`/`Output_` prefixes,
+/// two unnamed rule heads between them and an isolated `__Null` input.
+fn composition_topology() -> Vec<Value> {
+    let channel = |id: u64, source: u64, target: u64| json!({"stream":"timely","worker":0,"time_ns":100+id,"event":{"Channels":{"id":id,"scope_addr":[0],"source":[source,0],"target":[target,0]}}});
+    vec![
+        operates(0, &[0], "Dataflow", ""),
+        operates(
+            1,
+            &[0, 1],
+            "Input",
+            "Input { rel: \"R_Input_rows\", source_pos: Unknown }",
+        ),
+        operates(
+            2,
+            &[0, 2],
+            "Map",
+            "DistinctRelation { rel: \"R_Composite0_Input_rows\" }",
+        ),
+        operates(
+            3,
+            &[0, 3],
+            "Map",
+            "DistinctRelation { rel: \"R_Module1_echo\" }",
+        ),
+        operates(4, &[0, 4], "FlatMap", "Head { source_pos: Unknown }"),
+        operates(
+            5,
+            &[0, 5],
+            "Map",
+            "DistinctRelation { rel: \"R_Module2_echo\" }",
+        ),
+        operates(6, &[0, 6], "FlatMap", "Head { source_pos: Unknown }"),
+        operates(
+            7,
+            &[0, 7],
+            "InspectBatch",
+            "InspectOutput { rel: \"R_Output_copies\" }",
+        ),
+        operates(
+            8,
+            &[0, 8],
+            "Input",
+            "Input { rel: \"__Null\", source_pos: Unknown }",
+        ),
+        channel(1, 1, 2),
+        channel(2, 2, 3),
+        channel(3, 3, 4),
+        channel(4, 4, 5),
+        channel(5, 5, 6),
+        operates(
+            9,
+            &[0, 9],
+            "Map",
+            "DistinctRelation { rel: \"R_Input_rows\" }",
+        ),
+        channel(6, 6, 7),
+        channel(7, 9, 5),
+    ]
+}
+/// The tailer ingests line by line, so `available` can precede the last
+/// operator; blocks resolve silently on a partial graph, boxes would not.
+fn ingested(status: &Value, operators: u64, channels: u64) -> bool {
+    status["inspection"]["state"] == "available"
+        && status["inspection"]["activity"]["totals"]["operators"] == operators
+        && status["inspection"]["activity"]["totals"]["channels"] == channels
+}
+#[test]
+fn composition_worlds_synthesize_module_groups_that_propagate_and_nest() {
+    let f = Fixture::new();
+    let mut manager = f.manager();
+    let (leaf, outer) = nested_composition(&manager, None);
+    let id = manager.create(outer.clone()).unwrap();
+    // Created, not started: the record already carries the synthesized blocks.
+    let status = manager.status(&id).unwrap();
+    assert_eq!(status["inspection"]["state"], "missing");
+    let groups = status["inspection"]["metadata"]["authoredGroups"].clone();
+    let summary: Vec<(String, String, String, String)> = groups
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| {
+            (
+                g["id"].as_str().unwrap().into(),
+                g["name"].as_str().unwrap().into(),
+                g["member_match"]["debug_pattern"].as_str().unwrap().into(),
+                g["provenance"]["revision"].as_str().unwrap().into(),
+            )
+        })
+        .collect();
+    let leaf_version = leaf["version"].as_str().unwrap().to_owned();
+    assert_eq!(summary[0].0, "inner");
+    assert_eq!(summary[0].1, "Inner");
+    assert_eq!(summary[0].2, "\\bR_Composite0_");
+    assert_eq!(
+        summary[1],
+        (
+            "inner/leaf".into(),
+            "Leaf".into(),
+            "\\bR_Module1_".into(),
+            leaf_version.clone()
+        )
+    );
+    assert_eq!(
+        summary[2],
+        (
+            "second".into(),
+            "Leaf".into(),
+            "\\bR_Module2_".into(),
+            leaf_version
+        )
+    );
+    assert_eq!(summary[3].0, "$inputs");
+    assert_eq!(summary[3].2, "^Input \\{ rel: \"R_Input_");
+    assert_eq!(summary[4].0, "$outputs");
+    assert_eq!(summary[4].2, "^InspectOutput \\{ rel: \"R_Output_");
+    assert_eq!(summary[4].3, outer.processor.version);
+    assert_eq!(summary.len(), 5);
+    for g in groups.as_array().unwrap() {
+        assert_eq!(g["kind"], "module", "{g}");
+        // Modules absorb their plumbing; the boundary blocks stay exactly the external operators.
+        let boundary = g["id"] == "$inputs" || g["id"] == "$outputs";
+        assert_eq!(g["member_match"]["propagate"], !boundary, "{g}");
+        assert_eq!(g["member_key"], g["id"]);
+        assert_eq!(g["memberIds"], json!([]));
+    }
+    assert_eq!(groups[1]["provenance"]["repository"], leaf["processor_id"]);
+    assert_eq!(
+        groups[3]["provenance"]["repository"],
+        outer.processor.processor_id
+    );
+    let record: Value = serde_json::from_slice(
+        &fs::read(f.root.join("worlds").join(&id).join("world.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        record["metadata"]["authoredGroups"], groups,
+        "persisted as authored metadata"
+    );
+    manager.start(&id).unwrap();
+    append_capture(&f, &id, 1, &composition_topology());
+    let status = wait_until(&mut manager, &id, |s| ingested(s, 10, 7));
+    assert_eq!(status["inspection"]["mapping_error"], Value::Null);
+    let metadata = &status["inspection"]["metadata"];
+    let members = |id: &str| {
+        metadata["authoredGroups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["id"] == id)
+            .unwrap()["memberIds"]
+            .clone()
+    };
+    // 0:4 ties between inner/leaf and second → the lower group index; 0:6 ties
+    // between second and $outputs → second; the block `inner` holds its child.
+    assert_eq!(members("inner/leaf"), json!(["0:3", "0:4"]));
+    // 0:9 reads `R_Input_rows` directly, as aliased bindings produce; it belongs to the module
+    // that consumes it, not to the Inputs block.
+    assert_eq!(members("second"), json!(["0:5", "0:6", "0:9"]));
+    assert_eq!(members("inner"), json!(["0:2", "0:3", "0:4"]));
+    assert_eq!(members("$inputs"), json!(["0:1"]));
+    assert_eq!(members("$outputs"), json!(["0:7"]));
+    assert_eq!(
+        metadata["mapping_report"],
+        json!({"groups":{"inner":{"matched":1,"propagated":0},"inner/leaf":{"matched":1,"propagated":1},
+                         "second":{"matched":1,"propagated":2},"$inputs":{"matched":1,"propagated":0},
+                         "$outputs":{"matched":1,"propagated":0}},"unattributed":2})
+    );
+    // The retained capture stores the resolved blocks and the report.
+    append_capture(&f, &id, 1, &schedule(3, 1, 2));
+    wait_until(&mut manager, &id, |_| manager_capture_exists(&f, &outer));
+    let capture = manager
+        .capture_get(&outer.processor.processor_id, &outer.processor.version)
+        .unwrap();
+    assert_eq!(capture["metadata"], *metadata);
+    assert_eq!(capture["metadata"]["authoredGroups"][0]["kind"], "module");
+    assert_eq!(capture["mapping_error"], Value::Null);
+    manager.stop(&id).unwrap();
+    // Names follow the library association; a restart re-derives the blocks.
+    manager
+        .associate(
+            leaf["processor_id"].as_str().unwrap(),
+            leaf["version"].as_str().unwrap(),
+            "unassigned",
+            "Renamed leaf",
+            "",
+        )
+        .unwrap();
+    manager.start(&id).unwrap();
+    let status = manager.status(&id).unwrap();
+    let names: Vec<&str> = status["inspection"]["metadata"]["authoredGroups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Inner", "Renamed leaf", "Renamed leaf", "Inputs", "Outputs"]
+    );
+    manager.stop(&id).unwrap();
+    // Hand-authored groups keep precedence on an id collision and stay boxes.
+    let provenance = json!({"repository":"repo","revision":"commit","source":null});
+    let (_, authored) = nested_composition(
+        &manager,
+        Some(json!({"schema_version":1,"authoredGroups":[
+            {"id":"second","name":"Hand-authored second","member_key":"second","provenance":provenance,
+             "member_match":{"debug_pattern":"\\bR_Module2_"}}]})),
+    );
+    let id = manager.create(authored.clone()).unwrap();
+    manager.start(&id).unwrap();
+    append_capture(&f, &id, 1, &composition_topology());
+    let status = wait_until(&mut manager, &id, |s| ingested(s, 10, 7));
+    assert_eq!(status["inspection"]["mapping_error"], Value::Null);
+    let groups = status["inspection"]["metadata"]["authoredGroups"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let ids: Vec<&str> = groups.iter().map(|g| g["id"].as_str().unwrap()).collect();
+    assert_eq!(
+        ids,
+        vec!["second", "inner", "inner/leaf", "$inputs", "$outputs"]
+    );
+    assert_eq!(groups[0]["name"], "Hand-authored second");
+    assert!(groups[0].get("kind").is_none(), "{}", groups[0]);
+    assert_eq!(
+        groups[0]["memberIds"],
+        json!(["0:5"]),
+        "no propagation without the flag"
+    );
+    assert_eq!(groups[2]["memberIds"], json!(["0:3", "0:4"]));
+    assert_eq!(
+        groups[4]["memberIds"],
+        json!(["0:7"]),
+        "the Outputs block is exactly the external output operator"
+    );
+    // Neither a box nor a boundary block votes, so the plumbing this hand-authored group
+    // declined to absorb is reported as unattributed instead of being attached to a neighbour.
+    assert_eq!(
+        status["inspection"]["metadata"]["mapping_report"]["unattributed"],
+        4
+    );
+    manager.stop(&id).unwrap();
+    // Plain programs get no synthesized groups.
+    let plain = named(&manager, "Plain");
+    let id = manager.create(plain).unwrap();
+    assert_eq!(
+        manager.status(&id).unwrap()["inspection"]["metadata"],
+        Value::Null
+    );
+}

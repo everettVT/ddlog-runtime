@@ -60,6 +60,17 @@ pub struct MemberMatch {
     pub scope_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_pattern: Option<String>,
+    /// After matching, unclaimed operators adopt the majority group of their
+    /// channel neighbours among propagating groups (A13), until stable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propagate: Option<bool>,
+}
+/// `module`: a composition block (A13). Blocks skip the layout invariants,
+/// may nest by id (`parent/child`) and are never drawn as boxes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GroupKind {
+    Module,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +85,33 @@ pub struct AuthoredGroup {
     pub ports: Vec<AuthoredPort>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member_match: Option<MemberMatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<GroupKind>,
+}
+impl AuthoredGroup {
+    pub fn is_module(&self) -> bool {
+        self.kind == Some(GroupKind::Module)
+    }
+    fn propagates(&self) -> bool {
+        self.member_match
+            .as_ref()
+            .is_some_and(|m| m.propagate == Some(true))
+    }
+}
+/// Per-group attribution counts of one resolution: `matched` operators were
+/// claimed by ids, scope or pattern, `propagated` ones adopted through channel
+/// neighbours. `unattributed` operators belong to no group.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupReport {
+    pub matched: u64,
+    pub propagated: u64,
+}
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingReport {
+    pub groups: BTreeMap<String, GroupReport>,
+    pub unattributed: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,15 +119,21 @@ pub struct InspectionMetadata {
     pub schema_version: u32,
     #[serde(default, rename = "authoredGroups")]
     pub authored_groups: Vec<AuthoredGroup>,
+    /// Present on resolved metadata only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mapping_report: Option<MappingReport>,
 }
 impl Default for InspectionMetadata {
     fn default() -> Self {
         Self {
             schema_version: 1,
             authored_groups: vec![],
+            mapping_report: None,
         }
     }
 }
+/// Neighbour propagation stops after this many rounds even if still changing.
+pub const PROPAGATION_ROUNDS: usize = 16;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeOperator {
     pub id: String,
@@ -215,6 +259,12 @@ impl InspectionMetadata {
                     return Err("invalid source location".into());
                 }
             }
+            if g.is_module() && g.member_match.is_none() && g.member_ids.is_empty() {
+                return Err(format!(
+                    "group {}: a module group needs member_match or memberIds",
+                    g.id
+                ));
+            }
             if let Some(m) = &g.member_match {
                 if m.scope_name.is_none() && m.debug_pattern.is_none() {
                     return Err(format!(
@@ -229,8 +279,19 @@ impl InspectionMetadata {
                     pattern(text, "debug_pattern")?;
                 }
             }
+            // Boxes are disjoint; a block's resolved members repeat those of
+            // its nested blocks, so blocks are only checked within themselves.
+            let mut own = BTreeSet::new();
             for id in &g.member_ids {
-                unique(&mut members, id, "native group member")?;
+                unique(
+                    if g.is_module() {
+                        &mut own
+                    } else {
+                        &mut members
+                    },
+                    id,
+                    "native group member",
+                )?;
             }
             let mut ports = BTreeSet::new();
             for p in &g.ports {
@@ -256,9 +317,14 @@ impl InspectionMetadata {
     /// Resolve match-based membership against a live graph, deterministically:
     /// groups in declaration order; explicit `memberIds` and `scope_name`
     /// matches claim first (a matched scope claims its whole subtree), then
-    /// `debug_pattern` matches claim only unclaimed operators. Zero matches, a
-    /// port matching zero or several operators, a split native scope or members
-    /// under different native parents are mapping errors naming the group.
+    /// `debug_pattern` matches claim only unclaimed operators, then unclaimed
+    /// operators adopt the plurality group of their channel neighbours among
+    /// `propagate` groups (ties to the lowest group index; synchronous rounds,
+    /// at most [`PROPAGATION_ROUNDS`]). Zero matches, a port matching zero or
+    /// several operators, a split native scope or members under different
+    /// native parents are mapping errors naming the group; `kind: module`
+    /// groups skip the zero-match and layout checks (a block may be empty) and
+    /// a block's members include those of its nested `<id>/…` blocks.
     pub fn resolve(&self, graph: &NativeGraph) -> Result<InspectionMetadata, String> {
         self.validate()?;
         let family = Family::new(graph);
@@ -324,7 +390,7 @@ impl InspectionMetadata {
             let matched: Vec<usize> = (0..graph.nodes.len())
                 .filter(|&i| regex.is_match(&graph.nodes[i].debug))
                 .collect();
-            if matched.is_empty() {
+            if matched.is_empty() && !g.is_module() {
                 return Err(format!(
                     "group {}: debug_pattern {text:?} matched no native operator",
                     g.id
@@ -336,33 +402,118 @@ impl InspectionMetadata {
                 }
             }
         }
-        let mut resolved = self.clone();
-        for (gi, g) in resolved.authored_groups.iter_mut().enumerate() {
-            let set = &members[gi];
-            if set.is_empty() {
-                return Err(format!("group {}: no native members", g.id));
-            }
-            for &node in set {
-                if let Some(child) = family.children[node]
-                    .iter()
-                    .find(|child| !set.contains(child))
-                {
-                    return Err(format!(
-                        "group {}: would split native scope {} (child {} is not a member)",
-                        g.id, graph.nodes[node].id, graph.nodes[*child].id
-                    ));
+        let mut report = MappingReport::default();
+        for (gi, g) in self.authored_groups.iter().enumerate() {
+            report.groups.insert(
+                g.id.clone(),
+                GroupReport {
+                    matched: members[gi].len() as u64,
+                    propagated: 0,
+                },
+            );
+        }
+        let propagating: Vec<bool> = self
+            .authored_groups
+            .iter()
+            .map(|g| g.propagates())
+            .collect();
+        if propagating.iter().any(|&p| p) {
+            let mut neighbours: Vec<Vec<usize>> = vec![vec![]; graph.nodes.len()];
+            for e in &graph.edges {
+                if let (Some(&s), Some(&t)) = (
+                    index_of.get(e.source.as_str()),
+                    index_of.get(e.target.as_str()),
+                ) {
+                    if s != t {
+                        neighbours[s].push(t);
+                        neighbours[t].push(s);
+                    }
                 }
             }
-            let parents: BTreeSet<Option<usize>> = set
-                .iter()
-                .map(|&node| family.parent[node])
-                .filter(|parent| parent.is_none_or(|p| !set.contains(&p)))
-                .collect();
-            if parents.len() > 1 {
-                return Err(format!(
-                    "group {}: members cross native parent boundaries",
-                    g.id
-                ));
+            for _ in 0..PROPAGATION_ROUNDS {
+                let adoptions: Vec<(usize, usize)> = (0..graph.nodes.len())
+                    .filter(|&node| owner[node].is_none())
+                    .filter_map(|node| {
+                        let mut votes: BTreeMap<usize, usize> = BTreeMap::new();
+                        for &other in &neighbours[node] {
+                            if let Some(g) = owner[other].filter(|&g| propagating[g]) {
+                                *votes.entry(g).or_default() += 1;
+                            }
+                        }
+                        // BTreeMap iterates ascending, so `>` keeps the lowest index on ties.
+                        votes
+                            .iter()
+                            .fold(None, |best: Option<(usize, usize)>, (&g, &n)| {
+                                if best.is_none_or(|(_, m)| n > m) {
+                                    Some((g, n))
+                                } else {
+                                    best
+                                }
+                            })
+                            .map(|(g, _)| (node, g))
+                    })
+                    .collect();
+                if adoptions.is_empty() {
+                    break;
+                }
+                for (node, g) in adoptions {
+                    owner[node] = Some(g);
+                    members[g].insert(node);
+                    report
+                        .groups
+                        .get_mut(&self.authored_groups[g].id)
+                        .unwrap()
+                        .propagated += 1;
+                }
+            }
+        }
+        report.unattributed = owner.iter().filter(|o| o.is_none()).count() as u64;
+        // A block's members include its nested blocks' members (`parent/child`).
+        let blocks: Vec<BTreeSet<usize>> = (0..self.authored_groups.len())
+            .map(|gi| {
+                let g = &self.authored_groups[gi];
+                if !g.is_module() {
+                    return members[gi].clone();
+                }
+                let prefix = format!("{}/", g.id);
+                self.authored_groups
+                    .iter()
+                    .enumerate()
+                    .filter(|(hi, h)| *hi == gi || (h.is_module() && h.id.starts_with(&prefix)))
+                    .flat_map(|(hi, _)| members[hi].iter().copied())
+                    .collect()
+            })
+            .collect();
+        let mut resolved = self.clone();
+        resolved.mapping_report = Some(report);
+        for (gi, g) in resolved.authored_groups.iter_mut().enumerate() {
+            let set = &blocks[gi];
+            if set.is_empty() && !g.is_module() {
+                return Err(format!("group {}: no native members", g.id));
+            }
+            if !g.is_module() {
+                for &node in set {
+                    if let Some(child) = family.children[node]
+                        .iter()
+                        .find(|child| !set.contains(child))
+                    {
+                        return Err(format!(
+                            "group {}: would split native scope {} (child {} is not a member)",
+                            g.id, graph.nodes[node].id, graph.nodes[*child].id
+                        ));
+                    }
+                }
+                let parents: BTreeSet<Option<usize>> = set
+                    .iter()
+                    .map(|&node| family.parent[node])
+                    .filter(|parent| parent.is_none_or(|p| !set.contains(&p)))
+                    .collect();
+                if parents.len() > 1 {
+                    return Err(format!(
+                        "group {}: members cross native parent boundaries",
+                        g.id
+                    ));
+                }
             }
             g.member_ids = set
                 .iter()
@@ -512,7 +663,9 @@ mod tests {
                     native_match: None,
                 }],
                 member_match: None,
+                kind: None,
             }],
+            mapping_report: None,
         };
         (m, g)
     }
@@ -539,6 +692,7 @@ mod tests {
             member_ids: vec![],
             ports: vec![],
             member_match: Some(member_match),
+            kind: None,
         }
     }
     fn scoped_graph() -> NativeGraph {
@@ -595,6 +749,7 @@ mod tests {
             MemberMatch {
                 scope_name: Some("large-star".into()),
                 debug_pattern: None,
+                propagate: None,
             },
         ));
         m.authored_groups.push(matched(
@@ -602,6 +757,7 @@ mod tests {
             MemberMatch {
                 scope_name: None,
                 debug_pattern: Some("ApplyTransformer \\{ transformer: \"Star\"".into()),
+                propagate: None,
             },
         ));
         m.validate().unwrap();
@@ -631,6 +787,7 @@ mod tests {
         zero.authored_groups[0].member_match = Some(MemberMatch {
             scope_name: Some("missing".into()),
             debug_pattern: None,
+            propagate: None,
         });
         assert!(zero.resolve(&graph).unwrap_err().contains("phase"));
         let mut split = InspectionMetadata::default();
@@ -639,6 +796,7 @@ mod tests {
             MemberMatch {
                 scope_name: None,
                 debug_pattern: Some("^ApplyTransformer".into()),
+                propagate: None,
             },
         );
         explicit.member_ids = vec!["0:3".into()];
@@ -648,6 +806,7 @@ mod tests {
             MemberMatch {
                 scope_name: Some("large-star".into()),
                 debug_pattern: None,
+                propagate: None,
             },
         ));
         assert!(split
@@ -660,6 +819,7 @@ mod tests {
             MemberMatch {
                 scope_name: None,
                 debug_pattern: Some("scope$".into()),
+                propagate: None,
             },
         ));
         assert!(torn
@@ -672,6 +832,7 @@ mod tests {
             MemberMatch {
                 scope_name: None,
                 debug_pattern: Some("R_edge|map$".into()),
+                propagate: None,
             },
         ));
         assert!(crossing
@@ -685,6 +846,7 @@ mod tests {
             MemberMatch {
                 scope_name: Some("large-star".into()),
                 debug_pattern: None,
+                propagate: None,
             },
         );
         group.ports.push(AuthoredPort {
@@ -710,6 +872,7 @@ mod tests {
         ported.authored_groups[0].member_match = Some(MemberMatch {
             scope_name: Some("large-star".into()),
             debug_pattern: None,
+            propagate: None,
         });
         let mut single = graph.clone();
         single.nodes[3].debug = "plain".into();
@@ -735,13 +898,224 @@ mod tests {
         malformed.authored_groups[1].member_match = Some(MemberMatch {
             scope_name: None,
             debug_pattern: Some("(".into()),
+            propagate: None,
         });
         assert!(malformed.validate().unwrap_err().contains("debug_pattern"));
         malformed.authored_groups[1].member_match = Some(MemberMatch {
             scope_name: None,
             debug_pattern: None,
+            propagate: None,
         });
         assert!(malformed.validate().is_err());
+    }
+    fn channel(id: u64, source: &str, target: &str) -> NativeChannel {
+        NativeChannel {
+            id: format!("0:{id}"),
+            channel_id: id,
+            source_address: vec![0, source[2..].parse().unwrap()],
+            target_address: vec![0, target[2..].parse().unwrap()],
+            worker: 0,
+            scope: vec![0],
+            source: source.into(),
+            target: target.into(),
+            source_port: 0,
+            target_port: 0,
+        }
+    }
+    fn module(id: &str, pattern: &str) -> AuthoredGroup {
+        let mut g = matched(
+            id,
+            MemberMatch {
+                scope_name: None,
+                debug_pattern: Some(pattern.into()),
+                propagate: Some(true),
+            },
+        );
+        g.kind = Some(GroupKind::Module);
+        g
+    }
+    #[test]
+    fn module_groups_propagate_nest_and_report() {
+        // 0:1 input → 0:2 (M0) → 0:3 (unnamed) → 0:4 (M1) → 0:5 (unnamed) → 0:6 output;
+        // 0:7 is unnamed with M0 and M1 neighbours (tie → lowest index); 0:8 is
+        // isolated; 0:9 names a nested composite relation; 0:10 is its module.
+        let graph = NativeGraph {
+            nodes: vec![
+                operator("0:0", &[0], "Dataflow", ""),
+                operator("0:1", &[0, 1], "Input", "Input { rel: \"R_Input_rows\" }"),
+                operator(
+                    "0:2",
+                    &[0, 2],
+                    "Map",
+                    "DistinctRelation { rel: \"R_Module0_echo\" }",
+                ),
+                operator("0:3", &[0, 3], "FlatMap", "Head { source_pos: Unknown }"),
+                operator(
+                    "0:4",
+                    &[0, 4],
+                    "Map",
+                    "DistinctRelation { rel: \"R_Module1_echo\" }",
+                ),
+                operator("0:5", &[0, 5], "FlatMap", "Head { source_pos: Unknown }"),
+                operator(
+                    "0:6",
+                    &[0, 6],
+                    "Probe",
+                    "ProbeOutput { rel: \"R_Output_copies\" }",
+                ),
+                operator("0:7", &[0, 7], "Map", "Head { source_pos: Unknown }"),
+                operator("0:8", &[0, 8], "Input", "Input { rel: \"__Null\" }"),
+                operator(
+                    "0:9",
+                    &[0, 9],
+                    "Map",
+                    "DistinctRelation { rel: \"R_Composite2_Output_x\" }",
+                ),
+                operator(
+                    "0:10",
+                    &[0, 10],
+                    "Map",
+                    "DistinctRelation { rel: \"R_Module3_echo\" }",
+                ),
+            ],
+            edges: vec![
+                channel(1, "0:1", "0:2"),
+                channel(2, "0:2", "0:3"),
+                channel(3, "0:3", "0:4"),
+                channel(4, "0:4", "0:5"),
+                channel(5, "0:5", "0:6"),
+                channel(6, "0:2", "0:7"),
+                channel(7, "0:7", "0:4"),
+                channel(8, "0:9", "0:10"),
+            ],
+        };
+        let mut m = InspectionMetadata::default();
+        m.authored_groups.push(module("first", "\\bR_Module0_"));
+        m.authored_groups.push(module("second", "\\bR_Module1_"));
+        m.authored_groups.push(module("inner", "\\bR_Composite2_"));
+        m.authored_groups
+            .push(module("inner/leaf", "\\bR_Module3_"));
+        m.authored_groups.push(module("$inputs", "\\bR_Input_"));
+        m.authored_groups.push(module("$outputs", "\\bR_Output_"));
+        m.validate().unwrap();
+        let wire = serde_json::to_value(&m).unwrap();
+        assert_eq!(wire["authoredGroups"][0]["kind"], "module");
+        assert_eq!(wire["authoredGroups"][0]["member_match"]["propagate"], true);
+        assert!(wire.get("mapping_report").is_none());
+        let resolved = m.resolve(&graph).unwrap();
+        let members = |id: &str| -> Vec<String> {
+            resolved
+                .authored_groups
+                .iter()
+                .find(|g| g.id == id)
+                .unwrap()
+                .member_ids
+                .clone()
+        };
+        // 0:3 sees M0 only in round one; 0:5 sees M1; 0:7 ties M0/M1 → M0.
+        assert_eq!(members("first"), vec!["0:2", "0:3", "0:7"]);
+        assert_eq!(members("second"), vec!["0:4", "0:5"]);
+        assert_eq!(members("inner/leaf"), vec!["0:10"]);
+        assert_eq!(
+            members("inner"),
+            vec!["0:9", "0:10"],
+            "a block includes its children"
+        );
+        assert_eq!(members("$inputs"), vec!["0:1"]);
+        assert_eq!(members("$outputs"), vec!["0:6"]);
+        let report = resolved.mapping_report.clone().unwrap();
+        assert_eq!(
+            report.unattributed, 2,
+            "the root scope and __Null stay outside"
+        );
+        assert_eq!(
+            report.groups["first"],
+            GroupReport {
+                matched: 1,
+                propagated: 2
+            }
+        );
+        assert_eq!(
+            report.groups["second"],
+            GroupReport {
+                matched: 1,
+                propagated: 1
+            }
+        );
+        assert_eq!(
+            report.groups["inner"],
+            GroupReport {
+                matched: 1,
+                propagated: 0
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&resolved).unwrap()["mapping_report"]["unattributed"],
+            2
+        );
+        // Blocks skip the layout invariants and may be empty; boxes do not.
+        let mut empty = m.clone();
+        empty.authored_groups.push(module("gone", "\\bR_Module9_"));
+        let resolved = empty.resolve(&graph).unwrap();
+        assert_eq!(resolved.authored_groups[6].member_ids, Vec::<String>::new());
+        assert_eq!(
+            resolved.mapping_report.unwrap().groups["gone"],
+            GroupReport::default()
+        );
+        // With 0:7 nested under 0:4, block `second` tolerates the split scope
+        // and block `first` the two parents; the same group as a box does not.
+        let mut scoped = graph.clone();
+        scoped.nodes[7].address = vec![0, 4, 1];
+        assert_eq!(
+            m.resolve(&scoped).unwrap().authored_groups[0].member_ids,
+            vec!["0:2", "0:3", "0:7"]
+        );
+        let mut boxed = m.clone();
+        boxed.authored_groups[0].kind = None;
+        assert!(boxed
+            .resolve(&scoped)
+            .unwrap_err()
+            .contains("cross native parent"));
+        let mut torn = m.clone();
+        torn.authored_groups[1].kind = None;
+        assert!(torn
+            .resolve(&scoped)
+            .unwrap_err()
+            .contains("split native scope"));
+        // Only propagating groups vote: a hand-authored neighbour never adopts.
+        let mut quiet = m.clone();
+        for g in &mut quiet.authored_groups {
+            g.member_match.as_mut().unwrap().propagate = None;
+        }
+        let resolved = quiet.resolve(&graph).unwrap();
+        assert_eq!(resolved.authored_groups[0].member_ids, vec!["0:2"]);
+        assert_eq!(resolved.mapping_report.unwrap().unattributed, 5);
+        // Propagation is bounded: a chain longer than the round limit stays partly unattributed.
+        let mut chain = NativeGraph {
+            nodes: vec![operator("0:1", &[0, 1], "Map", "R_Module0_x")],
+            edges: vec![],
+        };
+        for i in 2..=(PROPAGATION_ROUNDS as u64 + 3) {
+            chain
+                .nodes
+                .push(operator(&format!("0:{i}"), &[0, i], "Map", "Head"));
+            chain
+                .edges
+                .push(channel(i, &format!("0:{}", i - 1), &format!("0:{i}")));
+        }
+        let mut long = InspectionMetadata::default();
+        long.authored_groups.push(module("only", "\\bR_Module0_"));
+        let report = long.resolve(&chain).unwrap().mapping_report.unwrap();
+        assert_eq!(
+            report.groups["only"].propagated as usize,
+            PROPAGATION_ROUNDS
+        );
+        assert_eq!(report.unattributed, 2);
+        let mut shapeless = InspectionMetadata::default();
+        let mut bare = module("bare", "x");
+        bare.member_match = None;
+        shapeless.authored_groups.push(bare);
+        assert!(shapeless.validate().unwrap_err().contains("module group"));
     }
     #[test]
     fn lossless_contract() {

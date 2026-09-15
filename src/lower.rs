@@ -10,6 +10,62 @@ pub struct Schema {
     pub input: bool,
     pub fields: Vec<String>,
 }
+
+/// Program-text choices of the lowering. Version 1 (the default and the
+/// registered form of every existing composition) explains each rule through
+/// an `Evidence<n>` relation and exports every derived relation; version 2 is
+/// the lean form that worlds build: no evidence, exports limited to the public
+/// outputs, and composition bindings aliased instead of copied. Public
+/// relation contents are identical under both.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LoweringOptions {
+    /// Emit `Evidence<n>` relations so `lemmalog_why` can read rule witnesses.
+    pub explain: bool,
+    /// Declare every derived relation as `output relation`; otherwise only the
+    /// exported ones (and the relations an exported output copies directly).
+    pub export_internal: bool,
+    /// Rewrite a bound composition input to its single source relation instead
+    /// of generating a copy rule through a separate relation.
+    pub alias_bindings: bool,
+}
+impl LoweringOptions {
+    pub const VERSION_1: Self = Self {
+        explain: true,
+        export_internal: true,
+        alias_bindings: false,
+    };
+    pub const VERSION_2: Self = Self {
+        explain: false,
+        export_internal: false,
+        alias_bindings: true,
+    };
+    /// The options recorded as a numbered lowering version.
+    pub fn for_version(version: u32) -> Result<Self, String> {
+        match version {
+            1 => Ok(Self::VERSION_1),
+            2 => Ok(Self::VERSION_2),
+            _ => Err(format!(
+                "Unknown lowering version {version}; this runtime defines versions 1 and 2"
+            )),
+        }
+    }
+    /// The numbered version these options are recorded as, if they are one.
+    pub fn version(&self) -> Option<u32> {
+        if *self == Self::VERSION_1 {
+            Some(1)
+        } else if *self == Self::VERSION_2 {
+            Some(2)
+        } else {
+            None
+        }
+    }
+}
+impl Default for LoweringOptions {
+    fn default() -> Self {
+        Self::VERSION_1
+    }
+}
 pub(super) fn ident(s: &str) -> bool {
     !s.is_empty()
         && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -109,16 +165,31 @@ pub fn lower_with_operators(
     schemas: &BTreeMap<String, Schema>,
     operators: &[Operator],
 ) -> Result<String, String> {
+    lower_with_options(rules, schemas, operators, &LoweringOptions::VERSION_1, None)
+}
+
+/// Lower under explicit options. `exports` names the derived relations that
+/// stay `output relation` when `export_internal` is off; `None` keeps every
+/// derived relation public, which is what a program without an interface needs.
+pub fn lower_with_options(
+    rules: &str,
+    schemas: &BTreeMap<String, Schema>,
+    operators: &[Operator],
+    options: &LoweringOptions,
+    exports: Option<&BTreeSet<String>>,
+) -> Result<String, String> {
     let clauses = parse_program(rules).map_err(|e| e.to_string())?;
-    lower_clauses_with_operators(&clauses, schemas, operators)
+    lower_clauses(&clauses, schemas, operators, options, exports)
 }
 
 /// Composition renames predicates and typed operators without round-tripping
 /// authored terms or string literals through a second source parser.
-pub(super) fn lower_clauses_with_operators(
+pub(super) fn lower_clauses(
     clauses: &[Clause],
     schemas: &BTreeMap<String, Schema>,
     operators: &[Operator],
+    options: &LoweringOptions,
+    exports: Option<&BTreeSet<String>>,
 ) -> Result<String, String> {
     if clauses.is_empty() && operators.is_empty() {
         return Err("Expected at least one rule".into());
@@ -144,11 +215,14 @@ pub(super) fn lower_clauses_with_operators(
                 Ok(format!("f{i}: {ty}"))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        out.push_str(&format!(
-            "{} relation R_{name}({})\n",
-            if s.input { "input" } else { "output" },
-            fields.join(", ")
-        ));
+        let keyword = if s.input {
+            "input relation"
+        } else if options.export_internal || exports.is_none_or(|exports| exports.contains(name)) {
+            "output relation"
+        } else {
+            "relation"
+        };
+        out.push_str(&format!("{keyword} R_{name}({})\n", fields.join(", ")));
     }
     let mut dependencies: BTreeMap<String, Vec<(String, DependencyKind)>> = BTreeMap::new();
     for (index, operator) in operators.iter().enumerate() {
@@ -240,6 +314,10 @@ pub(super) fn lower_clauses_with_operators(
         body.extend(negative_body);
         if vars.is_empty() {
             return Err("Rule must bind at least one variable".into());
+        }
+        if !options.explain {
+            out.push_str(&format!("{} :- {}.\n", atom(&c.head)?, body.join(", ")));
+            continue;
         }
         let fields = vars
             .iter()

@@ -1,10 +1,10 @@
 //! Program state and semantic operations, independent of MCP and connections.
 use crate::composition::CompositionResolution;
 use crate::registry::{GitProvenance, ProcessorDefinition, ProcessorRegistry, ProcessorVersion};
-use crate::{AgentProgram, Backend, Operation, Schema};
+use crate::{AgentProgram, Backend, LoweringOptions, Operation, Schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One relation addressable through a world's public tools. `physical` is the
 /// generated native relation name; every other field is the public contract.
@@ -120,6 +120,13 @@ impl ProgramInstance {
         }
     }
 
+    /// Lowering version (1 or 2) for the next `processor_install` or
+    /// `lemmalog_install_rules`. It changes only the generated text this
+    /// instance builds; the registered record and its hash are untouched.
+    pub fn set_lowering_version(&mut self, version: u32) -> Result<(), String> {
+        self.backend.set_lowering_version(version)
+    }
+
     /// Execute one semantic operation at the last completed transaction.
     ///
     /// Operation names and JSON argument/result shapes match the documented
@@ -136,6 +143,7 @@ impl ProgramInstance {
                 "revision":live.then(|| self.backend.revision()),
                 "program_version":live.then_some(self.backend.version),
                 "source_sha256":live.then(|| self.backend.source_sha256()),
+                "lowering_version":live.then(|| self.backend.lowering_version()),
             }));
         }
         if name.starts_with("processor_") && name != "processor_install" {
@@ -463,12 +471,15 @@ impl ProgramInstance {
             }
         };
         let record = match name {
-            "processor_create" => registry.create(definition()?, provenance()?)?,
-            "processor_publish" => registry.publish(
+            "processor_create" => {
+                registry.create_versioned(definition()?, provenance()?, lowering_version(a, 1)?)?
+            }
+            "processor_publish" => registry.publish_versioned(
                 string(a, "processor_id")?,
                 definition()?,
                 string(a, "expected_version")?,
                 provenance()?,
+                lowering_version(a, 1)?,
             )?,
             "processor_fork" => registry.fork(
                 string(a, "processor_id")?,
@@ -501,16 +512,21 @@ impl ProgramInstance {
                 a.get("version").map(|_| string(a, "version")).transpose()?,
             )?;
         let pinned = record.clone();
+        // An explicit `lowering_version` argument overrides the instance
+        // default for this build only; the pinned record stays as registered.
+        let lowering_version = lowering_version(a, self.backend.lowering_version())?;
+        let lowering = LoweringOptions::for_version(lowering_version)?;
+        self.backend.set_lowering_version(lowering_version)?;
         let mut result = match record.definition {
             ProcessorDefinition::Composition(definition) => {
                 let compiled = self
                     .registry
                     .as_ref()
                     .unwrap()
-                    .compile_composition(&definition.composition)?;
-                let result = self
-                    .backend
-                    .install_source(compiled.source, compiled.schemas)?;
+                    .compile_composition_versioned(&definition.composition, lowering_version)?;
+                let result =
+                    self.backend
+                        .install_source(compiled.source, compiled.schemas, lowering)?;
                 self.interface = Some(PublicInterface {
                     inputs: compiled.resolution.inputs.clone(),
                     outputs: compiled.resolution.outputs.clone(),
@@ -545,10 +561,17 @@ impl ProgramInstance {
                     self.agent = Some(agent);
                     result
                 } else {
-                    self.backend.install_with_operators(
+                    let schema: BTreeMap<String, Schema> =
+                        serde_json::from_value(definition.schemas).map_err(|e| e.to_string())?;
+                    let exports: Option<BTreeSet<String>> = definition
+                        .interface
+                        .as_ref()
+                        .map(|interface| interface.outputs.iter().cloned().collect());
+                    self.backend.install_program(
                         &definition.rules,
-                        definition.schemas,
+                        schema,
                         &definition.operators,
+                        exports.as_ref(),
                     )?
                 };
                 self.interface = definition.interface.map(|interface| PublicInterface {
@@ -617,6 +640,20 @@ fn string<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
     value[key]
         .as_str()
         .ok_or_else(|| format!("Missing string field: {key}"))
+}
+/// Optional `lowering_version` argument, validated as a defined version.
+fn lowering_version(value: &Value, default: u32) -> Result<u32, String> {
+    match value.get("lowering_version") {
+        None | Some(Value::Null) => Ok(default),
+        Some(version) => {
+            let version = version
+                .as_u64()
+                .and_then(|version| u32::try_from(version).ok())
+                .ok_or("lowering_version must be 1 or 2")?;
+            LoweringOptions::for_version(version)?;
+            Ok(version)
+        }
+    }
 }
 fn parse_operators(value: &Value) -> Result<Vec<super::star::Operator>, String> {
     value
