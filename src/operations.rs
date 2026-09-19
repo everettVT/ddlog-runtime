@@ -95,7 +95,7 @@ impl AgentProgram {
         if !backend.facts.is_empty() {
             return Err("Installing a registered operation requires an empty input session".into());
         }
-        let result = backend.install_source(source, declared)?;
+        let result = backend.install_source(source, declared, super::LoweringOptions::VERSION_1)?;
         Ok((
             Self {
                 operation: name.to_string(),

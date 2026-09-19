@@ -110,6 +110,55 @@ class ConfigTests(unittest.TestCase):
         changed = dict(public, system_prompt='Changed public code configuration')
         self.assertNotEqual(worker.InferenceConfig.from_dict(changed).operation_binding(), binding)
 
+    def test_direct_transport_fields_and_hash_stability(self):
+        modal = config()
+        self.assertNotIn('transport', modal.public_dict())
+        direct = worker.InferenceConfig.from_dict(dict(config_dict(), transport='direct', api_key_env='OPENROUTER_API_KEY'))
+        self.assertEqual((direct.public_dict()['transport'], direct.public_dict()['api_key_env']), ('direct', 'OPENROUTER_API_KEY'))
+        self.assertNotEqual(direct.config_sha256, modal.config_sha256)
+        self.assertEqual(worker.InferenceConfig.from_dict(direct.public_dict()).config_sha256, direct.config_sha256)
+        for fields in ({'transport': 'direct'}, {'api_key_env': 'OPENROUTER_API_KEY'}, {'transport': 'direct', 'api_key_env': 'lower'},
+                       {'transport': 'curl', 'api_key_env': 'K'}, {'transport': 'direct', 'api_key_env': 'sk-or-v1-secret'}):
+            with self.assertRaises(ValueError):
+                worker.InferenceConfig.from_dict(dict(config_dict(), **fields))
+
+    def test_direct_transport_sends_bearer_from_environment_and_parses_completion(self):
+        direct = worker.InferenceConfig.from_dict(dict(config_dict(), transport='direct', api_key_env='TEST_PROVIDER_KEY'))
+        client = worker.ProviderClient(direct, timeout=5)
+        seen = {}
+
+        class Response:
+            def __init__(self, body):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, limit=None):
+                return self.body if limit is None else self.body[:limit]
+
+        def fake_urlopen(request, timeout=None):
+            seen['url'], seen['headers'], seen['body'], seen['timeout'] = request.full_url, dict(request.header_items()), request.data, timeout
+            return Response(json.dumps({'id': 'gen-1', 'model': '~openai/gpt-luna-latest', 'choices': [
+                {'message': {'content': '{"text":"hi","calls":[]}'}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 3, 'completion_tokens': 5}}).encode())
+
+        with patch.dict('os.environ', {'TEST_PROVIDER_KEY': 'unit-test-key', 'OPENROUTER_APP_TITLE': 'Turbo observer'}), patch.object(worker, 'urlopen', fake_urlopen):
+            result = asyncio.run(client.infer('prompt'))
+        self.assertEqual((result.content, result.model, result.id, result.usage), ('{"text":"hi","calls":[]}', '~openai/gpt-luna-latest', 'gen-1', {'prompt_tokens': 3, 'completion_tokens': 5}))
+        self.assertEqual(seen['url'], direct.endpoint)
+        self.assertEqual(seen['headers']['Authorization'], 'Bearer unit-test-key')
+        self.assertEqual(seen['headers']['X-title'], 'Turbo observer')
+        self.assertEqual(json.loads(seen['body'])['model'], 'test-model')
+        self.assertEqual(result.config_sha256, direct.config_sha256)
+        with patch.dict('os.environ', {'TEST_PROVIDER_KEY': 'REPLACE_ME_OPENROUTER_API_KEY'}):
+            with self.assertRaisesRegex(worker.WorkerError, 'nothing was sent') as caught:
+                asyncio.run(client.infer('prompt'))
+            self.assertFalse(caught.exception.uncertain)
+        self.assertNotIn('unit-test-key', json.dumps(worker.asdict(result)))
+
     def test_strict_schema_endpoint_and_numeric_bounds(self):
         for field, value in [('api_key', 'DO_NOT_ECHO_SECRET'), ('headers', {'Authorization': 'DO_NOT_ECHO_SECRET'}),
                              ('format_version', True), ('max_tokens', 32769), ('max_tokens', True),

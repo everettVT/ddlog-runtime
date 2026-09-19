@@ -23,7 +23,9 @@ port indexes, not layout port IDs. Live validation requires a matching channel i
 the stated direction. Unconnected ports cannot be verified from channel data and
 must have no native mapping until supporting observations exist.
 
-Version 1 groups are flat and disjoint: overlapping native membership is rejected.
+Version 1 groups without a `kind` are flat and disjoint boxes: overlapping native
+membership is rejected. `kind: "module"` groups are blocks (below): they may nest
+and a block's members repeat those of its nested blocks.
 Registered definitions may have no native member IDs or mappings; registration is
 not execution. Live bindings are execution-specific and must be revalidated after
 recompilation or restart. Clients still decide whether a group can be laid out
@@ -61,10 +63,58 @@ by `resolve(graph)` when a snapshot is taken, deterministically:
    observed on channels in the stated direction).
 
 A snapshot reports the resolved metadata (`authoredGroups[*].memberIds` are the
-resolved ids, `ports[*].native_ports` include the matched binding) and
-`mapping_error: null`, or the authored metadata unchanged with the error text.
-Resolution is a pure function of the metadata and the observed graph; it never
-consults the registry or invents operators.
+resolved ids, `ports[*].native_ports` include the matched binding, plus a
+`mapping_report`) and `mapping_error: null`, or the authored metadata unchanged
+with the error text. Resolution is a pure function of the metadata and the observed
+graph; it never consults the registry or invents operators.
+
+## Module groups (blocks) and neighbour propagation
+
+An `AuthoredGroup` may carry `kind: "module"` and its `member_match` may carry
+`propagate: true`; both are omitted from the wire form when absent, so existing
+definitions keep their content hash. A module group is a **block, not a box**:
+
+- It skips the layout invariants (whole native subtree, one native parent) and
+  the zero-match rule: a block whose pattern matches nothing resolves to an empty
+  `memberIds` (its report shows `matched: 0`) instead of a mapping error, because
+  the runtime synthesizes blocks without knowing which generated relations the
+  DDlog compiler keeps as named operators. Viewers never draw blocks as boxes.
+- Blocks nest by id: `<parent>/<child>` is a nested block of `<parent>` when both
+  have `kind: module`; a parent is declared before its children and its resolved
+  `memberIds` include every nested block's members. Other groups stay disjoint.
+- `validate()` requires a module group to declare `member_match` or `memberIds`.
+
+**Propagation.** After steps 1–2 above, every unclaimed operator adopts the group
+with the most channel neighbours (source or target of any observed channel, self
+loops ignored) among groups whose `member_match.propagate` is `true`; groups
+without the flag never vote, so a box never grows through propagation. Ties go to
+the lowest group index (declaration order). Rounds are synchronous — every adoption
+of a round is computed from the previous round's owners — and repeat until nothing
+changes or 16 rounds have run (`PROPAGATION_ROUNDS`); an operator whose neighbours
+are still unowned after that stays outside every group. Propagation happens before
+the nested-block aggregation, so an operator adopts the deepest block that reached
+it and its ancestors list it too.
+
+Resolved metadata carries the report:
+
+```json
+"mapping_report": {"groups": {"<group id>": {"matched": 3, "propagated": 5}},
+                   "unattributed": 2}
+```
+
+`matched` counts operators claimed by `memberIds`, `scope_name` or `debug_pattern`,
+`propagated` those adopted through neighbours, both for the group that owns the
+operator directly (a nested block's members are not re-counted on its parent), so the
+sum over groups plus `unattributed` is the number of native operators. Every group
+is listed, including boxes (`propagated: 0`). The retained capture stores the
+resolved blocks and the report like any other resolved metadata.
+
+Worlds built from a composition receive synthesized module groups from the world
+manager (`worlds.md`): one per composition node matching the generated relation
+prefix (`\bR_Module<index>_`, `\bR_Composite<index>_` for a nested composition,
+whose own nodes become `<alias>/<child>`), plus `$inputs` (`\bR_Input_`) and
+`$outputs` (`\bR_Output_`), all with `propagate: true`. Hand-authored groups keep
+today's semantics and precedence.
 
 ## Native capture build hook
 

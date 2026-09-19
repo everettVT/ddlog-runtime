@@ -7,7 +7,7 @@
 | `lemmalog_install_rules` | Validate typed rules/operators, compile a candidate, replay retained input, then replace the active unpinned program |
 | `apply_changes` | Transactional insert/delete batch with input set semantics |
 | `lemmalog_query` | Dump one declared or exported output at the last completed transaction |
-| `lemmalog_why` | Direct variable-binding witnesses for an ordinary zero-based rule index; compositions include origin metadata |
+| `lemmalog_why` | Direct variable-binding witnesses for an ordinary zero-based rule index; compositions include origin metadata. Only under lowering version 1: a version 2 build answers with an explicit "Explanations were not compiled for this instance" error |
 | `processor_create`, `processor_publish`, `processor_fork` | Save immutable validated definitions; publication uses an expected version |
 | `processor_get`, `processor_list`, `processor_search` | Inspect exact/current definitions and discover stable identities |
 | `processor_archive`, `processor_restore` | Conditional lifecycle changes using expected version and lifecycle revision |
@@ -27,3 +27,5 @@ A public interface restricts ordinary mutations/queries to its exported names an
 The language supports positive recursion and safe stratified negation. Negative cycles, cycles through native transformers, aggregation, arithmetic, clock builtins and inline facts are rejected before activation. Schemas use signed 64-bit integers or strings; mixed-value columns are unsupported. Control characters unsupported by the pinned DDlog CLI are rejected. Retained inputs require compatible input schemas; derived schemas may change during program replacement.
 
 `why` is not a memory proof tree. Registry content versions, generated source hashes, native implementation hashes, executable hashes and live instance IDs identify different things. Preserve them separately.
+
+Generated text has a numbered **lowering version** (`docs/worlds.md`, "Lowering versions"): version 1, the library default, explains every rule through an `Evidence` relation and exports every derived relation; version 2 (`ProgramInstance::set_lowering_version(2)`, or `lowering_version` on `processor_install`) is the lean form worlds build. `processor_create`/`processor_publish` accept `lowering_version` to record a composition's resolution under version 2; records without the field are version 1 and stay valid. Public relation names and contents do not depend on the version; `instance_info` and the install result report the version built.

@@ -1,6 +1,6 @@
 //! Explicit local checkpoints of acknowledged pure-program state.
 //! No WAL, automatic recovery, provider retry or external-effect restoration.
-use crate::{Backend, Result, Schema};
+use crate::{Backend, LoweringOptions, Result, Schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -25,6 +25,19 @@ struct State {
     program_version: u64,
     /// Opaque application payload, integrity-bound but never interpreted by runtime.
     metadata: Value,
+    /// Lowering the source was generated under; omitted (and 1) for every
+    /// checkpoint written before version 2 existed, so their digests hold.
+    #[serde(
+        default = "default_lowering_version",
+        skip_serializing_if = "is_version_1"
+    )]
+    lowering_version: u32,
+}
+fn default_lowering_version() -> u32 {
+    1
+}
+fn is_version_1(version: &u32) -> bool {
+    *version == 1
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -105,17 +118,24 @@ impl State {
                 };
                 fields.push(format!("f{i}: {ty}"));
             }
+            // Derived relations are `output relation` under lowering version 1
+            // and either form under version 2; both compare as `relation`.
             declarations.insert(format!(
-                "{} relation R_{name}({})",
-                if schema.input { "input" } else { "output" },
+                "{}relation R_{name}({})",
+                if schema.input { "input " } else { "" },
                 fields.join(", ")
             ));
         }
         let actual: Vec<_> = self
             .source
             .lines()
-            .filter(|line| {
-                line.starts_with("input relation R_") || line.starts_with("output relation R_")
+            .filter_map(|line| {
+                if line.starts_with("input relation R_") || line.starts_with("relation R_") {
+                    Some(line)
+                } else {
+                    line.strip_prefix("output ")
+                        .filter(|rest| rest.starts_with("relation R_"))
+                }
             })
             .collect();
         if actual.len() != declarations.len()
@@ -156,6 +176,7 @@ impl Backend {
             revision: self.revision,
             program_version: self.version,
             metadata,
+            lowering_version: self.active_lowering.version().unwrap_or(1),
         };
         state.validate()?;
         let sha256 = digest(&state)?;
@@ -252,7 +273,11 @@ impl Backend {
         candidate.attempt = self.attempt;
         candidate.facts = facts;
         candidate.schema = checkpoint.state.schemas.clone();
-        candidate.install_source(checkpoint.state.source, checkpoint.state.schemas)?;
+        candidate.install_source(
+            checkpoint.state.source,
+            checkpoint.state.schemas,
+            LoweringOptions::for_version(checkpoint.state.lowering_version)?,
+        )?;
         candidate.revision = checkpoint.state.revision;
         candidate.version = checkpoint.state.program_version;
         *self = candidate;

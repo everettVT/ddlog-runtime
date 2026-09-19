@@ -178,7 +178,11 @@ class CompositionAdmission(unittest.TestCase):
         outer = self.client.call('processor_create', {'definition': wrapper})
         self.assertEqual(len(outer['composition']['dependencies']), 3)
         self.assertEqual(outer['composition']['dependencies']['nested.first']['version'], self.leaf['version'])
-        self.assertTrue(all(row['kind'] == 'program' for row in self.client.call('processor_list')['processors']))
+        kinds = {row['processor_id']: row['kind']
+                 for row in self.client.call('processor_list')['processors']}
+        self.assertEqual(kinds, {self.leaf['processor_id']: 'program',
+                                 inner['processor_id']: 'composition',
+                                 outer['processor_id']: 'composition'})
         self.client.call('processor_install', {k: outer[k] for k in ('processor_id', 'version')})
         self.client.call('apply_changes', {'changes': [{'op': 'insert', 'predicate': 'source', 'values': ['x']}]})
         self.assertEqual(self.client.call('lemmalog_query', {'predicate': 'result'})['rows'], '')

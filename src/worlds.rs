@@ -2,6 +2,7 @@
 //!
 //! The manager owns existing `ProgramInstance`s; attaching a client must reuse this
 //! manager, never instantiate a second manager as a discovery mechanism.
+use crate::inspection::{AuthoredGroup, GroupKind, InspectionMetadata, MemberMatch, Provenance};
 use crate::instance::{public_relations, PublicRelation};
 use crate::registry::{
     kind_of, GitProvenance, ImportStatus, ProcessorDefinition, ProcessorReference,
@@ -533,6 +534,130 @@ impl WorldManager {
     pub fn registry(&self) -> Result<ProcessorRegistry, String> {
         ProcessorRegistry::open(self.registry_root.clone())
     }
+    /// A13: the world's inspection metadata is the pinned definition's authored
+    /// metadata plus, for a composition, one `kind: module` group per node of
+    /// its resolution (index order, `\bR_Module<i>_`; a nested composition is
+    /// `\bR_Composite<i>_` with its own nodes as `<alias>/<child>` after it),
+    /// then `$inputs` (`\bR_Input_`) and `$outputs` (`\bR_Output_`), all
+    /// propagating. Names come from the library association when the child pin
+    /// has one, else the alias; provenance is the child pin. Hand-authored
+    /// groups keep precedence on an id or member_key collision.
+    fn world_metadata(
+        &self,
+        record: &ProcessorVersion,
+    ) -> Result<Option<InspectionMetadata>, String> {
+        let authored = match &record.definition {
+            ProcessorDefinition::Program(p) => p.inspection.clone(),
+            ProcessorDefinition::Composition(c) => c.inspection.clone(),
+        };
+        let Some(resolution) = &record.composition else {
+            return Ok(authored);
+        };
+        let catalog = self.libraries()?;
+        let named = |reference: &ProcessorReference| -> Option<String> {
+            catalog["libraries"]
+                .as_array()?
+                .iter()
+                .flat_map(|entry| entry["processors"].as_array().into_iter().flatten())
+                .find(|p| {
+                    p["processor_id"] == reference.processor_id.as_str()
+                        && p["version"] == reference.version.as_str()
+                })
+                .and_then(|p| p["name"].as_str())
+                .filter(|name| !name.trim().is_empty())
+                .map(str::to_owned)
+        };
+        let module = |id: String,
+                      name: String,
+                      pattern: String,
+                      propagate: bool,
+                      pin: &ProcessorReference| AuthoredGroup {
+            id: id.clone(),
+            name,
+            member_key: id,
+            provenance: Provenance {
+                repository: pin.processor_id.clone(),
+                revision: pin.version.clone(),
+                source: None,
+            },
+            member_ids: vec![],
+            ports: vec![],
+            member_match: Some(MemberMatch {
+                scope_name: None,
+                debug_pattern: Some(pattern),
+                propagate: Some(propagate),
+            }),
+            kind: Some(GroupKind::Module),
+        };
+        // The generated relation prefix names each node's index: `Module<i>_<rel>`
+        // for a program (`"node": path`), `Composite<i>_Output_<name>` for a nested
+        // composition (`"scope": path`); every node has at least one such relation.
+        let mut indexed: Vec<(u64, String, &str, &ProcessorReference)> = Vec::new();
+        for (path, pin) in &resolution.dependencies {
+            let (marker, key) = if resolution
+                .dependencies
+                .keys()
+                .any(|k| k.starts_with(&format!("{path}.")))
+            {
+                ("Composite", "scope")
+            } else {
+                ("Module", "node")
+            };
+            let index = resolution
+                .relations
+                .iter()
+                .find(|(_, r)| r[key] == path.as_str())
+                .and_then(|(name, _)| name.strip_prefix(marker)?.split('_').next()?.parse::<u64>().ok())
+                .ok_or_else(|| format!("Composition node {path} has no {marker}<index>_ relation in its resolution"))?;
+            indexed.push((index, path.clone(), marker, pin));
+        }
+        indexed.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+        let pin = ProcessorReference {
+            processor_id: record.processor_id.clone(),
+            version: record.version.clone(),
+        };
+        let mut synthesized: Vec<AuthoredGroup> = indexed
+            .into_iter()
+            .map(|(index, path, marker, child)| {
+                let alias = path.rsplit('.').next().unwrap_or(&path).to_owned();
+                module(
+                    path.replace('.', "/"),
+                    named(child).unwrap_or(alias),
+                    format!("\\bR_{marker}{index}_"),
+                    true,
+                    child,
+                )
+            })
+            .collect();
+        // The boundary blocks are the external input/output operators themselves, not every
+        // operator that reads one: lowering version 2 aliases bindings, so a module's own rules
+        // read `R_Input_<name>` directly and a bare prefix would pull module internals out of
+        // their block. They never propagate; their neighbours belong to whatever consumes them.
+        synthesized.push(module(
+            "$inputs".into(),
+            "Inputs".into(),
+            "^Input \\{ rel: \"R_Input_".into(),
+            false,
+            &pin,
+        ));
+        synthesized.push(module(
+            "$outputs".into(),
+            "Outputs".into(),
+            "^InspectOutput \\{ rel: \"R_Output_".into(),
+            false,
+            &pin,
+        ));
+        let mut metadata = authored.unwrap_or_default();
+        synthesized.retain(|g| {
+            !metadata
+                .authored_groups
+                .iter()
+                .any(|h| h.id == g.id || h.member_key == g.member_key)
+        });
+        metadata.authored_groups.extend(synthesized);
+        metadata.validate()?;
+        Ok(Some(metadata))
+    }
     pub fn create(&mut self, definition: WorldDefinition) -> Result<String, String> {
         if definition.label.trim().is_empty() || definition.label.len() > 256 {
             return Err("World label must contain 1–256 bytes".into());
@@ -568,10 +693,7 @@ impl WorldManager {
                 state: "created".into(),
                 error: None,
                 generation: 0,
-                metadata: match record.definition {
-                    crate::registry::ProcessorDefinition::Program(p) => p.inspection,
-                    crate::registry::ProcessorDefinition::Composition(c) => c.inspection,
-                },
+                metadata: self.world_metadata(&record)?,
                 telemetry: None,
                 tailer: None,
                 reader: None,
@@ -702,6 +824,15 @@ impl WorldManager {
         if let Some(mut tailer) = world.tailer.take() {
             tailer.stop();
         }
+        // Re-derived from the immutable pin so module groups follow renamed
+        // associations and worlds recorded before A13 gain them on restart.
+        let record = registry.get(
+            &world.definition.processor.processor_id,
+            Some(&world.definition.processor.version),
+        )?;
+        let metadata = self.world_metadata(&record)?;
+        let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
+        world.metadata = metadata;
         world.generation += 1;
         world.stop_requested = false;
         let mut backend = Backend::new(
@@ -737,6 +868,11 @@ impl WorldManager {
         controls.insert(id.into(), backend.control.clone());
         let mut instance =
             ProgramInstance::new(backend, BTreeMap::new(), Some(registry), Some(id.into()));
+        // Managed worlds build under the lean lowering (A14): identical public relations,
+        // far fewer native operators. Registered records keep their own recorded version.
+        instance
+            .set_lowering_version(2)
+            .map_err(|error| format!("Cannot select the world lowering: {error}"))?;
         world.state = "starting".into();
         world.error = None;
         let scenarios = if world.definition.purpose == "test" {

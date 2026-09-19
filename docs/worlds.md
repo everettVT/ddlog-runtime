@@ -46,7 +46,9 @@ autostart. The operator chooses when to run this owner.
   Imported definitions are named from `names`, an existing association, or derived.
 - `create` takes a `label`, exact `processor` reference, optional `purpose`
   (`instance`, the default, or `test`) and, for tests, non-empty `scenarios`. It does
-  not start a process. Scenarios are validated at creation.
+  not start a process. Scenarios are validated at creation. The world's inspection
+  metadata is the pinned definition's authored metadata; for a composition it also
+  gains synthesized **module groups** (below).
 - `start` takes `id`, records `starting`, then compiles/installs asynchronously.
   Poll `status`, `inspect`, or `inventory` to collect completion or failure.
 - `stop` takes `id`. It cancels managed compiler/native process groups. A pending
@@ -57,7 +59,7 @@ autostart. The operator chooses when to run this owner.
 - `execute` takes world `id`, an inner `operation`, and inner `args`. Definition
   installation/registry mutations are rejected here; world definitions stay pinned.
   Beyond the existing program operations it offers:
-  - `instance_info` adds `revision`, `program_version` and `source_sha256` (sha256 of
+  - `instance_info` adds `revision`, `program_version`, `lowering_version` and `source_sha256` (sha256 of
     the lowered `program.dl`) while the instance is healthy.
   - `apply_changes` adds `revision`.
   - `relations` `{}` → `{revision, relations: [{name, input, fields, count}]}` over the
@@ -153,6 +155,72 @@ through `member_match`/`native_match` resolved at snapshot time (`inspection.md`
 source/debug labels are never converted into fabricated membership. Consumers must
 show lifecycle state alongside captured topology.
 
+**Module groups (A13).** A world pinned to a composition gets one `kind: "module"`
+authored group per node of the pinned `CompositionResolution`, without any
+hand-authored metadata: `{id: "<alias>", name: <library association name of the
+child pin, else the alias>, kind: "module", member_key: "<alias>", member_match:
+{debug_pattern: "\bR_Module<index>_", propagate: true}, provenance: {repository:
+<child processor_id>, revision: <child version>}}`. `<index>` is the node's index in
+the resolution, read from the generated relation prefix (`Module<index>_<relation>`
+for a program node, `Composite<index>_Output_<name>` for a nested composition, whose
+pattern is `\bR_Composite<index>_` and whose own nodes follow it as
+`<alias>/<child alias>`); groups are listed in index order, parent before child,
+then `$inputs` (`\bR_Input_`, name "Inputs") and `$outputs` (`\bR_Output_`,
+name "Outputs"), whose provenance is the world's own pin. Synthesized groups are
+appended after the definition's hand-authored groups; on an `id` or `member_key`
+collision the hand-authored group wins and the synthesized one is dropped. The
+groups are re-derived from the immutable pin on every `start`, so a renamed
+association shows on restart and worlds recorded before this rule gain them; the
+result is persisted in `world.json` and resolved at snapshot time (`inspection.md`:
+propagation, nesting, `mapping_report`), and the retained capture stores the
+resolved blocks like any other group. Programs get no synthesized groups.
+
+**Lowering versions (A14).** The generated DDlog text of a definition has a numbered
+lowering version; public relation names and contents are identical under every
+version, only the text, its hash and the operator count differ.
+- **Version 1** (`LoweringOptions::VERSION_1`, the library default and the form every
+  registered `CompositionResolution` records unless `lowering_version: 2` was passed to
+  `processor_create`/`processor_publish` or `ProcessorRegistry::create_versioned`):
+  every rule is explained through an `Evidence<n>` relation plus a copy rule, every
+  derived relation is an `output relation`, and every composition binding is a copy
+  rule through the bound input's own relation.
+- **Version 2** (`LoweringOptions::VERSION_2`, `{explain: false, export_internal: false,
+  alias_bindings: true}`): no `Evidence` relations (`lemmalog_why` answers with an
+  explicit "Explanations were not compiled for this instance" error); only the
+  composition's external outputs and the relations they copy directly stay `output
+  relation` (a program with an interface keeps its interface outputs; one without keeps
+  everything); and a bound target input is rewritten to its single source relation, so
+  its copy rule and relation disappear. The resolution's `relations` map records each
+  aliased target as `"alias_of": "<generated source relation>"` (resolved through nested
+  `Composite<n>_Input_*` chains), aliased bindings generate no `rules` entry, and the
+  `inputs`/`outputs` maps and `public_relations` are unchanged.
+- `CompositionResolution.lowering_version` (absent, i.e. 1, in records written before
+  this rule) says which text `generated_source_sha256` hashes; `processor_get`, imports
+  and nested references verify a record under its own recorded version, so registered
+  compositions stay valid and are never rewritten. A build selects its version
+  independently of the record: `ProgramInstance::set_lowering_version(2)` (or a
+  `lowering_version` argument to `processor_install`) builds version 2 text from a
+  version 1 pin; the install result and `instance_info` carry `lowering_version`, and
+  `instance_info.source_sha256`, `program_source` and `instance_info.composition`
+  describe the text actually built. Library users keep version 1 unless they opt in.
+- Measured on the X0 composed agent (3 nodes, 126 authored rules, 22 external inputs,
+  30 external outputs, 33 bindings): version 1 lowers to 260 relations (22 input, 112
+  output, 126 `Evidence`) and 252 rules, and its native graph has 2,495 operators
+  (`Operates` events in the capture: 266 Input, 276 AsCollection, 279 Concatenate,
+  241 Consolidate, 239 Probe, 238 InspectBatch, 68 Join, 40 ThresholdTotal, ...);
+  version 2 lowers to 101 relations (22 input, 60 output, 19 internal; the 33 bound
+  inputs are aliased) and 93 rules, and its graph has 1,095 operators (108 Input,
+  96 AsCollection, 119 Concatenate, 62 Consolidate, 61 Probe, 60 InspectBatch, 67 Join,
+  35 ThresholdTotal, ...), 44% of the version 1 count, with the same 52 public
+  relations. Reproduce with
+  `tests/lowering_v2.rs::measure_registered_composition_lowerings` (ignored; takes the
+  registry, processor and version from `DDLOG_LOWERING_*`, the native driver from
+  `DDLOG_RUNTIME_NATIVE_BUILD` and counts the capture named by `DDLOG_OBSERVER_FILE`).
+  `tests/lowering_v2.rs` proves the public relation contents identical at every
+  revision under both versions with the native driver
+  (`native_public_relations_are_identical_under_both_lowerings`, ignored without
+  `DDLOG_RUNTIME_NATIVE_BUILD`).
+
 **Tailer.** Each `start` spawns one capture tailer thread for the new generation. It
 polls the capture file every 100 ms, ingests at most 4 MiB per poll into the shared
 state that `status`/`inspect` snapshot, and exits on `stop`, on owner drop (both
@@ -168,7 +236,8 @@ hold that state without a thread; `inventory {summary: true}` never reads a capt
 `<BUILD_ROOT>/captures/<processor_id>/<version-hex>.json`:
 `{schema_version: 1, processor: {processor_id, version}, world_id, generation,
 captured_at_unix_ms, unresolved_channels, graph: {nodes, edges}, metadata,
-mapping_error}` — topology and resolved authored metadata only, no activity. A later
+mapping_error}` — topology and resolved authored metadata (module groups and
+`mapping_report` included) only, no activity. A later
 generation of any world pinned to that version replaces it. `world.json` records
 `capture_generation` so a recovered world does not capture the same generation twice.
 

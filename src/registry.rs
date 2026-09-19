@@ -201,7 +201,19 @@ impl ProcessorRegistry {
         definition: ProcessorDefinition,
         provenance: Option<GitProvenance>,
     ) -> Result<ProcessorVersion> {
-        let composition = self.validate_definition(&definition)?;
+        self.create_versioned(definition, provenance, 1)
+    }
+
+    /// Create with a composition resolution recorded under `lowering_version`.
+    /// The content hash and identity are those of the authored definition, so
+    /// the version only decides which generated text the record vouches for.
+    pub fn create_versioned(
+        &self,
+        definition: ProcessorDefinition,
+        provenance: Option<GitProvenance>,
+        lowering_version: u32,
+    ) -> Result<ProcessorVersion> {
+        let composition = self.validate_definition_versioned(&definition, lowering_version)?;
         let _lock = UpdateLock::acquire(&self.root)?;
         self.ensure_references_active(composition.as_ref())?;
         self.create_locked(definition, provenance, None, composition)
@@ -217,9 +229,29 @@ impl ProcessorRegistry {
         expected_current_version: &str,
         provenance: Option<GitProvenance>,
     ) -> Result<ProcessorVersion> {
+        self.publish_versioned(
+            processor_id,
+            definition,
+            expected_current_version,
+            provenance,
+            1,
+        )
+    }
+
+    /// [`Self::publish`] with the composition resolution recorded under
+    /// `lowering_version`. Re-publishing content that already exists returns
+    /// the existing record under its own recorded version.
+    pub fn publish_versioned(
+        &self,
+        processor_id: &str,
+        definition: ProcessorDefinition,
+        expected_current_version: &str,
+        provenance: Option<GitProvenance>,
+        lowering_version: u32,
+    ) -> Result<ProcessorVersion> {
         validate_processor_id(processor_id)?;
         validate_version(expected_current_version)?;
-        let composition = self.validate_definition(&definition)?;
+        let composition = self.validate_definition_versioned(&definition, lowering_version)?;
         let _lock = UpdateLock::acquire(&self.root)?;
         self.ensure_active(processor_id)?;
         self.ensure_references_active(composition.as_ref())?;
@@ -283,7 +315,8 @@ impl ProcessorRegistry {
         {
             return Err("Processor current-version lineage mismatch; inspect current and exact version records and reconcile the registry before continuing".into());
         }
-        let composition = self.validate_definition(&record.definition)?;
+        let composition =
+            self.validate_definition_versioned(&record.definition, recorded_version(&record))?;
         if record.composition != composition {
             return Err("Processor composition resolution mismatch; inspect the exact dependency versions and generated-source metadata and reconcile before installation".into());
         }
@@ -568,18 +601,32 @@ impl ProcessorRegistry {
         &self,
         manifest: &CompositionManifest,
     ) -> Result<CompiledComposition> {
-        self.compile_composition_with(manifest, &|reference| {
-            self.read_version(&reference.processor_id, &reference.version)
-        })
+        self.compile_composition_versioned(manifest, 1)
+    }
+
+    /// [`Self::compile_composition`] under a numbered lowering version. The
+    /// registered records of the referenced nodes are verified under their own
+    /// recorded versions; only the returned text follows `lowering_version`.
+    pub fn compile_composition_versioned(
+        &self,
+        manifest: &CompositionManifest,
+        lowering_version: u32,
+    ) -> Result<CompiledComposition> {
+        self.compile_composition_with(
+            manifest,
+            &|reference| self.read_version(&reference.processor_id, &reference.version),
+            lowering_version,
+        )
     }
 
     fn compile_composition_with(
         &self,
         manifest: &CompositionManifest,
         reader: &dyn Fn(&ProcessorReference) -> Result<ProcessorVersion>,
+        lowering_version: u32,
     ) -> Result<CompiledComposition> {
         let nodes = self.resolve_nodes(manifest, &mut Vec::new(), &mut 0, reader)?;
-        super::composition::compile_resolved(manifest, &nodes)
+        super::composition::compile_resolved_with(manifest, &nodes, lowering_version)
     }
 
     fn resolve_nodes(
@@ -617,8 +664,11 @@ impl ProcessorRegistry {
                 ProcessorDefinition::Composition(definition) => {
                     let children =
                         self.resolve_nodes(&definition.composition, stack, expanded, reader)?;
-                    let compiled =
-                        super::composition::compile_resolved(&definition.composition, &children)?;
+                    let compiled = super::composition::compile_resolved_with(
+                        &definition.composition,
+                        &children,
+                        recorded_version(&record),
+                    )?;
                     if record.composition.as_ref() != Some(&compiled.resolution) {
                         return Err(format!("Processor composition resolution mismatch for {} version {}; inspect the exact dependency versions and generated-source metadata and reconcile before installation", record.processor_id, record.version));
                     }
@@ -631,19 +681,23 @@ impl ProcessorRegistry {
         Ok(nodes)
     }
 
-    fn validate_definition(
+    fn validate_definition_versioned(
         &self,
         definition: &ProcessorDefinition,
+        lowering_version: u32,
     ) -> Result<Option<CompositionResolution>> {
-        self.validate_definition_with(definition, &|reference| {
-            self.read_version(&reference.processor_id, &reference.version)
-        })
+        self.validate_definition_with(
+            definition,
+            &|reference| self.read_version(&reference.processor_id, &reference.version),
+            lowering_version,
+        )
     }
 
     fn validate_definition_with(
         &self,
         definition: &ProcessorDefinition,
         reader: &dyn Fn(&ProcessorReference) -> Result<ProcessorVersion>,
+        lowering_version: u32,
     ) -> Result<Option<CompositionResolution>> {
         let metadata = match definition {
             ProcessorDefinition::Program(p) => &p.inspection,
@@ -658,7 +712,7 @@ impl ProcessorRegistry {
                 Ok(None)
             }
             ProcessorDefinition::Composition(composition) => Ok(Some(
-                self.compile_composition_with(&composition.composition, reader)?
+                self.compile_composition_with(&composition.composition, reader, lowering_version)?
                     .resolution,
             )),
         }
@@ -700,7 +754,8 @@ impl ProcessorRegistry {
             &record.processor_id.clone(),
             &record.version.clone(),
         )?;
-        let composition = self.validate_definition(&record.definition)?;
+        let composition =
+            self.validate_definition_versioned(&record.definition, recorded_version(&record))?;
         if record.composition != composition {
             return Err(composition_mismatch(&record));
         }
@@ -816,7 +871,11 @@ impl ProcessorRegistry {
         for (processor_id, version) in &plan.order {
             let record = &plan.processors[processor_id].records[version];
             let status = (|| -> Result<ImportStatus> {
-                let composition = self.validate_definition_with(&record.definition, &reader)?;
+                let composition = self.validate_definition_with(
+                    &record.definition,
+                    &reader,
+                    recorded_version(record),
+                )?;
                 if record.composition != composition {
                     return Err(composition_mismatch(record));
                 }
@@ -1017,6 +1076,14 @@ fn verify_envelope(record: &ProcessorVersion, processor_id: &str, selected: &str
         return Err("Processor definition content hash mismatch; inspect the exact version file and reconcile its authored definition before continuing".into());
     }
     Ok(())
+}
+/// The lowering version a record's resolution was computed under; records
+/// written before version 2 existed carry no field and are version 1.
+fn recorded_version(record: &ProcessorVersion) -> u32 {
+    record
+        .composition
+        .as_ref()
+        .map_or(1, |resolution| resolution.lowering_version)
 }
 fn composition_mismatch(record: &ProcessorVersion) -> String {
     format!("Processor composition resolution mismatch for {} version {}; inspect the exact dependency versions and generated-source metadata and reconcile before installation", record.processor_id, record.version)

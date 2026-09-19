@@ -82,12 +82,19 @@ enum Tok {
     Punct(&'static str), // :- , ( ) . ! < =< >= > \= : _
 }
 
-fn tokenize(src: &str) -> Result<Vec<Tok>, ParseError> {
+type TokenSpans = (Vec<Tok>, Vec<(usize, usize)>);
+
+fn tokenize_spanned(src: &str) -> Result<TokenSpans, ParseError> {
+    let mut spans = Vec::new();
+    let mut offsets: Vec<_> = src.char_indices().map(|(offset, _)| offset).collect();
+    offsets.push(src.len());
     let mut toks = Vec::new();
     let b: Vec<char> = src.chars().collect();
     let mut i = 0;
     let n = b.len();
     while i < n {
+        let start = i;
+        let previous = toks.len();
         let c = b[i];
         if c.is_whitespace() {
             i += 1;
@@ -152,20 +159,48 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, ParseError> {
             i += punct.len();
             toks.push(Tok::Punct(punct));
         }
+        if toks.len() > previous {
+            spans.push((offsets[start], offsets[i]));
+        }
     }
-    Ok(toks)
+    Ok((toks, spans))
 }
 
 // ------------------------------------------------------------------- parser
 
 pub fn parse_program(src: &str) -> Result<Vec<Clause>, ParseError> {
-    let toks = tokenize(src)?;
+    let (toks, _) = tokenize_spanned(src)?;
     let mut p = Parser { toks, pos: 0 };
     let mut clauses = Vec::new();
     while p.pos < p.toks.len() {
         clauses.push(p.clause()?);
     }
     Ok(clauses)
+}
+
+/// An authored clause and its exact UTF-8 byte range, excluding leading comments.
+#[derive(Debug, Clone)]
+pub struct SpannedClause {
+    pub clause: Clause,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Parse source for inspection without lowering or native execution.
+pub fn parse_program_spanned(src: &str) -> Result<Vec<SpannedClause>, ParseError> {
+    let (toks, spans) = tokenize_spanned(src)?;
+    let mut parser = Parser { toks, pos: 0 };
+    let mut result = Vec::new();
+    while parser.pos < parser.toks.len() {
+        let start = spans[parser.pos].0;
+        let clause = parser.clause()?;
+        result.push(SpannedClause {
+            clause,
+            start,
+            end: spans[parser.pos - 1].1,
+        });
+    }
+    Ok(result)
 }
 
 struct Parser {
