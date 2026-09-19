@@ -4,6 +4,13 @@ use ddlog_runtime::worlds::{
 };
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Read, Write};
+
+fn inspect_logic(args: &Value) -> Result<Value, String> {
+    let program = serde_json::from_value(args["definition"].clone())
+        .map_err(|e| format!("Invalid program definition: {e}"))?;
+    Ok(ddlog_runtime::source_inspection::inspect_program(&program))
+}
+
 fn request(manager: &mut WorldManager, request: Value) -> Result<Value, String> {
     let args = &request["args"];
     let id = || {
@@ -52,6 +59,12 @@ fn request(manager: &mut WorldManager, request: Value) -> Result<Value, String> 
             serde_json::to_value(manager.registry()?.get(processor_id, Some(version))?)
                 .map_err(|e| e.to_string())
         }
+        "definition_logic" => {
+            let (processor_id, version) = pin()?;
+            let record = manager.registry()?.get(processor_id, Some(version))?;
+            Ok(ddlog_runtime::source_inspection::inspect_record(&record))
+        }
+        "inspect_logic" => inspect_logic(args),
         "definitions" => manager.definitions(),
         "import" => {
             let request: ImportRequest =
@@ -87,10 +100,18 @@ fn request(manager: &mut WorldManager, request: Value) -> Result<Value, String> 
         _ => Err("Unknown control-plane operation".into()),
     }
 }
+#[cfg(unix)]
+mod worlds_socket;
+#[cfg(unix)]
+static STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.len() != 3 {
-        return Err("Usage: ddlog-worlds REGISTRY BUILD_ROOT BUILD_DRIVER".into());
+    let socket_mode = args.len() == 5 && args[3] == "--listen";
+    if args.len() != 3 && !socket_mode {
+        return Err(
+            "Usage: ddlog-worlds REGISTRY BUILD_ROOT BUILD_DRIVER [--listen ENDPOINT.json]".into(),
+        );
     }
     let mut manager = WorldManager::new(
         args[0].clone().into(),
@@ -99,8 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     #[cfg(unix)]
     {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static STOP: AtomicBool = AtomicBool::new(false);
+        use std::sync::atomic::Ordering;
         extern "C" fn signal(_: libc::c_int) {
             STOP.store(true, Ordering::SeqCst);
         }
@@ -112,10 +132,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::spawn(move || loop {
             if STOP.load(Ordering::SeqCst) {
                 shutdown.stop_all();
+                if socket_mode {
+                    return;
+                }
                 std::process::exit(143);
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         });
+    }
+    if socket_mode {
+        #[cfg(unix)]
+        return worlds_socket::serve(manager, std::path::Path::new(&args[4]), &STOP)
+            .map_err(Into::into);
+        #[cfg(not(unix))]
+        return Err("Independent owner attachment requires Unix".into());
     }
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();

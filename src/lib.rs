@@ -6,6 +6,7 @@
 pub use lemmalog_syntax as syntax;
 pub mod inspection;
 pub mod instance;
+pub mod source_inspection;
 mod telemetry;
 pub mod worlds;
 pub use instance::ProgramInstance;
