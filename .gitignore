@@ -6,3 +6,4 @@ verification/lean/.lake/
 verification/tla/states/
 verification/tla/*_TTrace_*.bin
 verification/tla/*.out
+verification/tla/*_TTrace_*.tla

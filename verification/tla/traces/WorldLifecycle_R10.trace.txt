@@ -1,0 +1,146 @@
+Error: Invariant I6 is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ dirty = (w1 :> FALSE)
+/\ exitMode = "up"
+/\ S = FALSE
+/\ fails = 0
+/\ stopAllKilled = (w1 :> FALSE)
+/\ state = (w1 :> "created")
+/\ ctlStopped = (w1 :> <<FALSE>>)
+/\ dropped = FALSE
+/\ pr = ( <<w1, 1, "comp">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] @@
+  <<w1, 1, "rt">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] )
+/\ disk = (w1 :> <<"created", 0, "none">>)
+/\ wtest = (w1 :> "none")
+/\ pending = (w1 :> FALSE)
+/\ cleanExit = <<FALSE>>
+/\ chan = (w1 :> [g |-> 0, k |-> "empty"])
+/\ tp = (w1 :> "none")
+/\ histLast = (w1 :> <<"created", 0, "none">>)
+/\ thr = (w1 :> [g |-> 0, ph |-> "none"])
+/\ inst = (w1 :> 0)
+/\ gen = (w1 :> 0)
+/\ err = (w1 :> "none")
+/\ ctlIn = (w1 :> 0)
+/\ stopReq = (w1 :> FALSE)
+/\ owner = 1
+
+State 2: <Start(w1) line 161, col 5 to line 195, col 69 of module WorldLifecycle>
+/\ dirty = (w1 :> FALSE)
+/\ exitMode = "up"
+/\ S = FALSE
+/\ fails = 0
+/\ stopAllKilled = (w1 :> FALSE)
+/\ state = (w1 :> "starting")
+/\ ctlStopped = (w1 :> <<FALSE>>)
+/\ dropped = FALSE
+/\ pr = ( <<w1, 1, "comp">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] @@
+  <<w1, 1, "rt">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] )
+/\ disk = (w1 :> <<"starting", 1, "none">>)
+/\ wtest = (w1 :> "none")
+/\ pending = (w1 :> TRUE)
+/\ cleanExit = <<FALSE>>
+/\ chan = (w1 :> [g |-> 0, k |-> "empty"])
+/\ tp = (w1 :> "none")
+/\ histLast = (w1 :> <<"starting", 1, "none">>)
+/\ thr = (w1 :> [g |-> 1, ph |-> "lower"])
+/\ inst = (w1 :> 0)
+/\ gen = (w1 :> 1)
+/\ err = (w1 :> "none")
+/\ ctlIn = (w1 :> 1)
+/\ stopReq = (w1 :> FALSE)
+/\ owner = 1
+
+State 3: <Stop(w1) line 200, col 5 to line 224, col 52 of module WorldLifecycle>
+/\ dirty = (w1 :> FALSE)
+/\ exitMode = "up"
+/\ S = FALSE
+/\ fails = 0
+/\ stopAllKilled = (w1 :> FALSE)
+/\ state = (w1 :> "stopping")
+/\ ctlStopped = (w1 :> <<TRUE>>)
+/\ dropped = FALSE
+/\ pr = ( <<w1, 1, "comp">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] @@
+  <<w1, 1, "rt">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] )
+/\ disk = (w1 :> <<"stopping", 1, "none">>)
+/\ wtest = (w1 :> "none")
+/\ pending = (w1 :> TRUE)
+/\ cleanExit = <<FALSE>>
+/\ chan = (w1 :> [g |-> 0, k |-> "empty"])
+/\ tp = (w1 :> "none")
+/\ histLast = (w1 :> <<"stopping", 1, "none">>)
+/\ thr = (w1 :> [g |-> 1, ph |-> "lower"])
+/\ inst = (w1 :> 0)
+/\ gen = (w1 :> 1)
+/\ err = (w1 :> "none")
+/\ ctlIn = (w1 :> 1)
+/\ stopReq = (w1 :> TRUE)
+/\ owner = 1
+
+State 4: <ThrPanic(w1) line 379, col 5 to line 383, col 67 of module WorldLifecycle>
+/\ dirty = (w1 :> FALSE)
+/\ exitMode = "up"
+/\ S = FALSE
+/\ fails = 0
+/\ stopAllKilled = (w1 :> FALSE)
+/\ state = (w1 :> "stopping")
+/\ ctlStopped = (w1 :> <<TRUE>>)
+/\ dropped = FALSE
+/\ pr = ( <<w1, 1, "comp">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] @@
+  <<w1, 1, "rt">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] )
+/\ disk = (w1 :> <<"stopping", 1, "none">>)
+/\ wtest = (w1 :> "none")
+/\ pending = (w1 :> TRUE)
+/\ cleanExit = <<FALSE>>
+/\ chan = (w1 :> [g |-> 0, k |-> "empty"])
+/\ tp = (w1 :> "none")
+/\ histLast = (w1 :> <<"stopping", 1, "none">>)
+/\ thr = (w1 :> [g |-> 0, ph |-> "none"])
+/\ inst = (w1 :> 0)
+/\ gen = (w1 :> 1)
+/\ err = (w1 :> "none")
+/\ ctlIn = (w1 :> 1)
+/\ stopReq = (w1 :> TRUE)
+/\ owner = 1
+
+State 5: <Status(w1) line 232, col 5 to line 273, col 43 of module WorldLifecycle>
+/\ dirty = (w1 :> FALSE)
+/\ exitMode = "up"
+/\ S = FALSE
+/\ fails = 0
+/\ stopAllKilled = (w1 :> FALSE)
+/\ state = (w1 :> "failed")
+/\ ctlStopped = (w1 :> <<TRUE>>)
+/\ dropped = FALSE
+/\ pr = ( <<w1, 1, "comp">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] @@
+  <<w1, 1, "rt">> :>
+      [owner |-> 0, alive |-> FALSE, tracked |-> FALSE, ok |-> FALSE] )
+/\ disk = (w1 :> <<"failed", 1, "worker">>)
+/\ wtest = (w1 :> "none")
+/\ pending = (w1 :> FALSE)
+/\ cleanExit = <<FALSE>>
+/\ chan = (w1 :> [g |-> 0, k |-> "empty"])
+/\ tp = (w1 :> "none")
+/\ histLast = (w1 :> <<"failed", 1, "worker">>)
+/\ thr = (w1 :> [g |-> 0, ph |-> "none"])
+/\ inst = (w1 :> 0)
+/\ gen = (w1 :> 1)
+/\ err = (w1 :> "worker")
+/\ ctlIn = (w1 :> 1)
+/\ stopReq = (w1 :> TRUE)
+/\ owner = 1
+
+70 states generated, 36 distinct states found, 19 states left on queue.
+The depth of the complete state graph search is 5.
+Finished in 01s at (2026-09-23 05:27:17)
+Trace exploration spec path: ./WorldLifecycle_TTrace_1790141235.tla

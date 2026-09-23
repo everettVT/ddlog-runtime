@@ -1,0 +1,12 @@
+TLC2 Version 2026.09.22.222048 (rev: 35d40c9)
+Implied-temporal checking--satisfiability problem has 5 branches.
+Checking 5 branches of temporal properties for the current state space with 20165 total distinct states at (2026-09-23 05:26:40)
+Finished checking temporal properties in 00s at 2026-09-23 05:26:41
+Progress(11) at 2026-09-23 05:26:41: 10,191 states generated (10,191 s/min), 4,033 distinct states found (4,033 ds/min), 1,456 states left on queue.
+Progress(28) at 2026-09-23 05:26:56: 166,462 states generated, 54,560 distinct states found, 0 states left on queue.
+Checking 5 branches of temporal properties for the complete state space with 272800 total distinct states at (2026-09-23 05:26:56)
+Finished checking temporal properties in 02s at 2026-09-23 05:26:58
+Model checking completed. No error has been found.
+166462 states generated, 54560 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 28.
+Finished in 21s at (2026-09-23 05:26:58)

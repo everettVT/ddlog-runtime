@@ -1,0 +1,6 @@
+TLC2 Version 2026.09.22.222048 (rev: 35d40c9)
+Progress(17) at 2026-09-23 05:25:32: 230,845 states generated (230,845 s/min), 53,904 distinct states found (53,904 ds/min), 13,916 states left on queue.
+Model checking completed. No error has been found.
+4617087 states generated, 936465 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 44.
+Finished in 51s at (2026-09-23 05:26:20)
