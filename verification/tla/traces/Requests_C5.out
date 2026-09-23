@@ -1,0 +1,299 @@
+TLC2 Version 2026.09.22.222048 (rev: 35d40c9)
+Running breadth-first search Model-Checking with fp 35 and seed -6028696186535051676 with 4 workers on 4 cores with 3042MB heap and 64MB offheap memory [pid: 3302] (Linux 6.18.44-fc-v37 amd64, Ubuntu 21.0.10 64bit, MSBDiskFPSet, DiskStateQueue).
+Starting... (2026-09-23 05:28:56)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-23 05:28:56.
+Error: Invariant NoAckWhileRuntimeDead is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ nCur = {}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> None)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 2: <Submit(e1,1,x) line 106, col 5 to line 115, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None @@ k2 :> None)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "submit", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> None)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 3: <SubmitMem line 118, col 5 to line 124, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 4: <Claim(k1,<<e1, 1, x>>) line 129, col 5 to line 139, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None @@ k2 :> None)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "claim", who |-> k1, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 5: <ClaimMem line 142, col 5 to line 150, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>> @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+State 6: <RogueComplete line 208, col 5 to line 209, col 59 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {<<<<e1, 1, x>>, o1>>}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>> @@ k2 :> None)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "complete", who |-> "env", out |-> o1]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+State 7: <CompleteMem line 192, col 5 to line 199, col 72 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> o1 @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {<<<<e1, 1, x>>, o1>>}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>> @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> <<e1, 1, x>>, out |-> o1, fresh |-> TRUE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+State 8: <Submit(e1,1,x) line 106, col 5 to line 115, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> o1 @@
+  <<e1, 1, y>> :> None )
+/\ failures = 1
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = FALSE
+/\ nResp = {<<<<e1, 1, x>>, o1>>}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>> @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "commit-then-die"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = TRUE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+State 9: <RogueComplete line 208, col 5 to line 209, col 59 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> o1 @@
+  <<e1, 1, y>> :> None )
+/\ failures = 1
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling" @@ k2 :> "idle")
+/\ uncertain = {}
+/\ alive = FALSE
+/\ nResp = {<<<<e1, 1, x>>, o1>>}
+/\ deadAck = TRUE
+/\ wid = (k1 :> <<e1, 1, x>> @@ k2 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None @@ k2 :> None)
+/\ lastFailure = "commit-then-die"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> <<e1, 1, x>>, out |-> o1, fresh |-> TRUE, dup |-> TRUE]
+/\ failed = TRUE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+3335 states generated, 1014 distinct states found, 529 states left on queue.
+The depth of the complete state graph search is 10.
+Finished in 00s at (2026-09-23 05:28:56)
+Trace exploration spec path: ./Requests_TTrace_1790141335.tla

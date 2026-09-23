@@ -1,0 +1,1206 @@
+TLC2 Version 2026.09.22.222048 (rev: 35d40c9)
+Running breadth-first search Model-Checking with fp 5 and seed 8068910261357615737 with 1 worker on 4 cores with 3042MB heap and 64MB offheap memory [pid: 4562] (Linux 6.18.44-fc-v37 amd64, Ubuntu 21.0.10 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/user/ddlog-runtime/verification/tla/Registry.tla
+Parsing file /tmp/tlc-10465829924474953110/Naturals.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-10465829924474953110/Sequences.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /tmp/tlc-10465829924474953110/FiniteSets.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-10465829924474953110/TLC.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /tmp/tlc-10465829924474953110/_TLCTrace.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/_TLCTrace.tla)
+Parsing file /tmp/tlc-10465829924474953110/TLCExt.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/TLCExt.tla)
+Parsing file /tmp/tlc-10465829924474953110/Integers.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Integers.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Integers
+Semantic processing of module TLCExt
+Semantic processing of module _TLCTrace
+Semantic processing of module Registry
+Linting of module TLCExt
+Linting of module _TLCTrace
+Linting of module Registry
+Starting... (2026-09-23 05:41:01)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-23 05:41:02.
+Error: Invariant ArchivedEventMatchesCur is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cur = (a :> v1 @@ b :> None)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] )
+/\ exists = (a :> TRUE @@ b :> FALSE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "idle")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> None @@ i2 :> None)
+
+State 2: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> None)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] )
+/\ exists = (a :> TRUE @@ b :> FALSE)
+/\ pc = (w1 :> "idle" @@ i1 :> "acq" @@ i2 :> "idle")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> None @@ i2 :> None)
+
+State 3: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> None)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] )
+/\ exists = (a :> TRUE @@ b :> FALSE)
+/\ pc = (w1 :> "idle" @@ i1 :> "imp" @@ i2 :> "idle")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> None @@ i2 :> None)
+
+State 4: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> None)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> FALSE)
+/\ pc = (w1 :> "idle" @@ i1 :> "imp" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> None @@ i2 :> None)
+
+State 5: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 2 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "imp" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v1 @@ i2 :> None)
+
+State 6: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "icommit" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v1 @@ i2 :> None)
+
+State 7: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "none",
+        p |-> a,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "rel" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v2 @@ i2 :> None)
+
+State 8: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "acq" @@ i1 :> "rel" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v2 @@ i2 :> None)
+
+State 9: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "acq" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v2 @@ i2 :> None)
+
+State 10: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "pchk" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> None @@ i1 :> v2 @@ i2 :> None)
+
+State 11: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "wver" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v2 @@ i1 :> v2 @@ i2 :> None)
+
+State 12: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "wcur" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v2 @@ i1 :> v2 @@ i2 :> None)
+
+State 13: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "rel" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 14: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "none",
+        kind |-> "pub",
+        p |-> b,
+        v |-> v1,
+        exp |-> v2,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 15: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "acq" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 16: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "tchk" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 17: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "wev" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 18: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "wptr" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 0)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 19: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "rel" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 20: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "acq")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = FALSE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 21: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 1 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "imp")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 22: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 2 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "imp")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 23: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v1)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "icommit")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> None)
+
+State 24: <Next line 366, col 8 to line 366, col 45 of module Registry>
+/\ cur = (a :> v1 @@ b :> v2)
+/\ rget = <<>>
+/\ op = ( w1 :>
+      [ st |-> "archived",
+        kind |-> "trans",
+        p |-> b,
+        v |-> None,
+        exp |-> v1,
+        expR |-> 0,
+        new |-> FALSE,
+        i |-> 0 ] @@
+  i1 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] @@
+  i2 :>
+      [ st |-> "none",
+        kind |-> "imp",
+        p |-> b,
+        v |-> None,
+        exp |-> None,
+        expR |-> 0,
+        new |-> TRUE,
+        i |-> 3 ] )
+/\ exists = (a :> TRUE @@ b :> TRUE)
+/\ pc = (w1 :> "idle" @@ i1 :> "idle" @@ i2 :> "rel")
+/\ obsRev = (w1 :> 0 @@ i1 :> 0 @@ i2 :> 0)
+/\ rpc = <<>>
+/\ clobbers = {<<i2, b, "cur">>}
+/\ lock = TRUE
+/\ lcPtr = (a :> 0 @@ b :> 1)
+/\ rc = <<>>
+/\ rp = <<>>
+/\ rr = <<>>
+/\ rst = <<>>
+/\ crashes = 0
+/\ rever = <<>>
+/\ versions = (a :> {v1} @@ b :> {v1, v2})
+/\ lcEv = ( a :> <<[st |-> "none", ver |-> None], [st |-> "none", ver |-> None]>> @@
+  b :> <<[st |-> "archived", ver |-> v1], [st |-> "none", ver |-> None]>> )
+/\ seen = <<>>
+/\ obsCur = (w1 :> v1 @@ i1 :> v2 @@ i2 :> v2)
+
+13217 states generated, 4654 distinct states found, 750 states left on queue.
+The depth of the complete state graph search is 24.
+Finished in 01s at (2026-09-23 05:41:02)
+Trace exploration spec path: ./Registry_TTrace_1790142061.tla

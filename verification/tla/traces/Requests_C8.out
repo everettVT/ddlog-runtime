@@ -1,0 +1,222 @@
+TLC2 Version 2026.09.22.222048 (rev: 35d40c9)
+Running breadth-first search Model-Checking with fp 114 and seed -8462695801144741695 with 4 workers on 4 cores with 3042MB heap and 64MB offheap memory [pid: 3460] (Linux 6.18.44-fc-v37 amd64, Ubuntu 21.0.10 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/user/ddlog-runtime/verification/tla/Requests.tla
+Parsing file /tmp/tlc-18305430470776930028/Naturals.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-18305430470776930028/FiniteSets.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-18305430470776930028/TLC.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /tmp/tlc-18305430470776930028/_TLCTrace.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/_TLCTrace.tla)
+Parsing file /tmp/tlc-18305430470776930028/Sequences.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /tmp/tlc-18305430470776930028/TLCExt.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/TLCExt.tla)
+Parsing file /tmp/tlc-18305430470776930028/Integers.tla (jar:file:/tmp/claude-0/tla2tools.jar!/tla2sany/StandardModules/Integers.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Integers
+Semantic processing of module TLCExt
+Semantic processing of module _TLCTrace
+Semantic processing of module Requests
+Linting of module TLCExt
+Linting of module _TLCTrace
+Linting of module Requests
+Starting... (2026-09-23 05:29:21)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-23 05:29:22.
+Error: Invariant OnlyClaimantSettles is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ nCur = {}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> None)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 2: <Submit(e1,1,x) line 106, col 5 to line 115, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "submit", who |-> None, out |-> None]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> None)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 3: <SubmitMem line 118, col 5 to line 124, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 4: <Claim(k1,<<e1, 1, x>>) line 129, col 5 to line 139, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "idle")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> None)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "claim", who |-> k1, out |-> None]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {}
+
+State 5: <ClaimMem line 142, col 5 to line 150, col 19 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>>)
+/\ pending = [id |-> None, kind |-> "none", who |-> None, out |-> None]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+State 6: <RogueComplete line 208, col 5 to line 209, col 59 of module Requests>
+/\ nCur = {<<e1, <<e1, 1, x>>>>}
+/\ output = ( <<e1, 0, x>> :> None @@
+  <<e1, 0, y>> :> None @@
+  <<e1, 1, x>> :> None @@
+  <<e1, 1, y>> :> None )
+/\ failures = 0
+/\ nClaimed = {<<e1, 1, x>>}
+/\ nIntent = {<<e1, 1, x>>}
+/\ provider = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 0 @@
+  <<e1, 1, y>> :> 0 )
+/\ wst = (k1 :> "calling")
+/\ uncertain = {}
+/\ alive = TRUE
+/\ nResp = {<<<<e1, 1, x>>, o1>>}
+/\ deadAck = FALSE
+/\ wid = (k1 :> <<e1, 1, x>>)
+/\ pending = [id |-> <<e1, 1, x>>, kind |-> "complete", who |-> "env", out |-> o1]
+/\ wout = (k1 :> None)
+/\ lastFailure = "none"
+/\ memCur = (e1 :> <<e1, 1, x>>)
+/\ ack = [id |-> None, out |-> None, fresh |-> FALSE, dup |-> FALSE]
+/\ failed = FALSE
+/\ known = {<<e1, 1, x>>}
+/\ claimsOk = ( <<e1, 0, x>> :> 0 @@
+  <<e1, 0, y>> :> 0 @@
+  <<e1, 1, x>> :> 1 @@
+  <<e1, 1, y>> :> 0 )
+/\ claimed = {<<e1, 1, x>>}
+
+124 states generated, 66 distinct states found, 25 states left on queue.
+The depth of the complete state graph search is 7.
+Finished in 00s at (2026-09-23 05:29:22)
+Trace exploration spec path: ./Requests_TTrace_1790141361.tla
