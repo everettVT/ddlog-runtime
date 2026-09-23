@@ -1,0 +1,5 @@
+name = "ddlog-verify"
+defaultTargets = ["DdlogVerify"]
+
+[[lean_lib]]
+name = "DdlogVerify"

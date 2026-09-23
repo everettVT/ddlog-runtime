@@ -2,3 +2,7 @@ target/
 __pycache__/
 *.pyc
 .DS_Store
+verification/lean/.lake/
+verification/tla/states/
+verification/tla/*_TTrace_*.bin
+verification/tla/*.out
