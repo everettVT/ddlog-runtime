@@ -209,6 +209,7 @@ pub struct Backend {
     revision: u64,
     attempt: u64,
     active_source: String,
+    active_binary_sha256: String,
     failed: bool,
     control: processes::ProcessControl,
     inspection_log: Option<PathBuf>,
@@ -230,6 +231,7 @@ impl Backend {
             revision: 0,
             attempt: 0,
             active_source: String::new(),
+            active_binary_sha256: String::new(),
             failed: false,
             control: processes::ProcessControl::default(),
             inspection_log: None,
@@ -237,6 +239,12 @@ impl Backend {
             lowering_version: 1,
             active_lowering: LoweringOptions::VERSION_1,
         }
+    }
+    /// Provenance captured at activation, never re-read from a mutable build file.
+    pub(crate) fn build_identity(&self) -> Value {
+        json!({"runtime":runtime_info(),"native_sha256":self.active_binary_sha256,
+            "source_sha256":self.source_sha256(),"lowering_version":self.lowering_version(),
+            "program_version":self.version})
     }
     /// Capture options for the native child; only meaningful with an
     /// inspection log. Takes effect at the next install.
@@ -398,6 +406,11 @@ impl Backend {
                 dir.join("build.log").display()
             ));
         }
+        use sha2::{Digest, Sha256};
+        let mut binary_file = std::fs::File::open(&binary).map_err(|e| e.to_string())?;
+        let mut binary_digest = Sha256::new();
+        std::io::copy(&mut binary_file, &mut binary_digest).map_err(|e| e.to_string())?;
+        let binary_sha256 = format!("{:x}", binary_digest.finalize());
         let mut runtime = Runtime::start(
             &binary,
             &self.control,
@@ -419,6 +432,7 @@ impl Backend {
         self.failed = false;
         self.schema = schema;
         self.active_source = source;
+        self.active_binary_sha256 = binary_sha256;
         self.active_lowering = lowering;
         self.version = version;
         self.revision = revision;

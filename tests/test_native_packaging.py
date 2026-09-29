@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -53,7 +54,20 @@ class NativePackaging(unittest.TestCase):
                                     ('mkdir -p program_ddlog/types/lemmalog_star\n' if star else ''))
                 compiler.chmod(0o755)
                 cargo = root / 'cargo'
-                cargo.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > args\nmkdir -p target/debug\nprintf binary > target/debug/program_cli\n')
+                cargo.write_text(f'''#!{sys.executable}
+import json
+from pathlib import Path
+import sys
+if '--version' in sys.argv:
+    print('fixture-tool 1.0')
+else:
+    Path({str(root / 'build-args')!r}).write_text('\\n'.join(sys.argv[1:]))
+    target = Path(sys.argv[sys.argv.index('--target-dir') + 1])
+    artifact = target / 'debug/program_cli'
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text('binary')
+    print(json.dumps({{'reason':'compiler-artifact', 'target':{{'name':'program_cli','kind':['bin']}}, 'executable':str(artifact)}}))
+''')
                 cargo.chmod(0o755)
                 # Simulated pinned generator output needed by the native hook installer.
                 project = root / 'program_ddlog'
@@ -68,14 +82,14 @@ class NativePackaging(unittest.TestCase):
                 (root / 'override.lock').write_text('explicit override\n[[package]]\nname = "types__lemmalog_star"\n')
                 env = {k: v for k, v in os.environ.items() if not k.startswith(('DDLOG_', 'CARGO_'))}
                 env.update(DDLOG_HOME=str(root), DDLOG_CARGO=str(cargo), DDLOG_OFFLINE='1',
-                           DDLOG_LOCK_DIR=str(ROOT / 'native'))
+                           DDLOG_LOCK_DIR=str(ROOT / 'native'), RUSTC=str(cargo))
                 if override:
                     env['DDLOG_CARGO_LOCK'] = str(root / 'override.lock')
                 subprocess.run([str(ROOT / 'scripts/build-ddlog.sh'), str(root / 'program.dl'), str(root / 'output')],
                                env=env, check=True, capture_output=True)
                 expected = root / 'override.lock' if override else ROOT / 'native' / ('star.Cargo.lock' if star else 'program.Cargo.lock')
                 self.assertEqual((root / 'program_ddlog/Cargo.lock').read_bytes(), expected.read_bytes())
-                self.assertIn('--locked', (root / 'program_ddlog/args').read_text())
+                self.assertIn('--locked', (root / 'build-args').read_text())
                 self.assertEqual((root / 'output').read_text(), 'binary')
                 self.assertEqual((project / 'differential_datalog/src/observer.rs').read_bytes(), (ROOT / 'native/observer.rs').read_bytes())
                 marker = json.loads((project / 'observer-install.json').read_text())

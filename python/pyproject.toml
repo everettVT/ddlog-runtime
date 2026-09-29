@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ddlog-runtime-client"
+version = "0.1.0"
+description = "Bounded attachment and durable admission client for the native DDLog world owner"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+packages = ["ddlog_runtime_client"]

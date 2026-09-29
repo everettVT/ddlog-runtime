@@ -11,27 +11,27 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const FORMAT_VERSION: u32 = 1;
-const MAX_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_BYTES: u64 = 64 * 1024 * 1024;
 static TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct State {
+pub(crate) struct State {
     format_version: u32,
-    source: String,
-    schemas: BTreeMap<String, Schema>,
+    pub(crate) source: String,
+    pub(crate) schemas: BTreeMap<String, Schema>,
     inputs: BTreeMap<String, Vec<Vec<Value>>>,
-    revision: u64,
-    program_version: u64,
+    pub(crate) revision: u64,
+    pub(crate) program_version: u64,
     /// Opaque application payload, integrity-bound but never interpreted by runtime.
-    metadata: Value,
+    pub(crate) metadata: Value,
     /// Lowering the source was generated under; omitted (and 1) for every
     /// checkpoint written before version 2 existed, so their digests hold.
     #[serde(
         default = "default_lowering_version",
         skip_serializing_if = "is_version_1"
     )]
-    lowering_version: u32,
+    pub(crate) lowering_version: u32,
 }
 fn default_lowering_version() -> u32 {
     1
@@ -56,6 +56,16 @@ fn decode_checkpoint(bytes: &[u8]) -> Result<Checkpoint> {
         return Err("Checkpoint integrity digest mismatch".into());
     }
     Ok(checkpoint)
+}
+/// Inspect a managed checkpoint with the same validation as Backend restore.
+pub(crate) fn inspect(bytes: &[u8]) -> Result<(String, State)> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("Checkpoint exceeds 64 MiB limit".into());
+    }
+    let checkpoint = decode_checkpoint(bytes)?;
+    checkpoint.state.validate()?;
+    LoweringOptions::for_version(checkpoint.state.lowering_version)?;
+    Ok((checkpoint.sha256, checkpoint.state))
 }
 #[cfg(feature = "iceberg")]
 pub(crate) fn validate_encoded(bytes: &[u8]) -> Result<()> {
@@ -270,6 +280,13 @@ impl Backend {
         let facts = checkpoint.state.validate()?;
         // Stage in a separate owner; errors leave this backend untouched.
         let mut candidate = Backend::new(self.root.clone(), self.driver.clone());
+        // Restore is still owned by the hosting world. In particular, Stop must
+        // cancel both compilation and replay, and the new generation keeps its
+        // own observer capture rather than inheriting ambient process settings.
+        candidate.control = self.control.clone();
+        candidate.inspection_log = self.inspection_log.clone();
+        candidate.observer = self.observer.clone();
+        candidate.lowering_version = checkpoint.state.lowering_version;
         candidate.attempt = self.attempt;
         candidate.facts = facts;
         candidate.schema = checkpoint.state.schemas.clone();

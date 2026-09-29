@@ -1,0 +1,1240 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-09-29T17:23:52.626414+00:00",
+  "scope": "Managed local SQLite/local FileIO Iceberg checkpoint transport; isolated native composition fixture, not assembled HHMM/Observer or remote R2 acceptance",
+  "status": "passed",
+  "candidate": {
+    "source_sha256": {
+      "src/world_storage.rs": "02c073e77af6c331af0fe6b53f38a7986ff0df3c703f9bba06213257161d6e94",
+      "src/world_persistence.rs": "9283e01a4184e31d0dec228edbbe0d06671cf013c447d85626f9f2b69fb31802",
+      "src/iceberg_checkpoint.rs": "2568ea8623b5943ea6715e2a6e2107c766e073256182bdd2ec306bd1ac128ea3",
+      "src/worlds.rs": "efbdd17101e2183e8dfec58a15bac9e36dc3d5c82efb62be6d2cb2a44b6d8365",
+      "src/bin/ddlog-worlds.rs": "a7b3a9f61001bd1ee59212deb997ee506dbf84f7109d37704e056b78fae29049",
+      "tests/managed_iceberg.rs": "05e4a6a343038435bbf81111434fcd22e9356f71eae00165094b6893c304ac0f"
+    },
+    "host_binary_sha256": "10c832981c1a5a3fb150dccc04a9c57daa653bec34af086a31f4808b5772954a",
+    "candidate_path": "/private/tmp/hhmm-x0-20260929/ddlog-worlds-managed-iceberg",
+    "test_binary_sha256": "05b66ce691e8888ffd74d3e3072ffa1a912999199b1b53ed2e34c5a10112c236"
+  },
+  "source_sha256": {
+    "src/world_storage.rs": "02c073e77af6c331af0fe6b53f38a7986ff0df3c703f9bba06213257161d6e94",
+    "src/world_persistence.rs": "9283e01a4184e31d0dec228edbbe0d06671cf013c447d85626f9f2b69fb31802",
+    "src/iceberg_checkpoint.rs": "2568ea8623b5943ea6715e2a6e2107c766e073256182bdd2ec306bd1ac128ea3",
+    "src/worlds.rs": "efbdd17101e2183e8dfec58a15bac9e36dc3d5c82efb62be6d2cb2a44b6d8365",
+    "src/bin/ddlog-worlds.rs": "a7b3a9f61001bd1ee59212deb997ee506dbf84f7109d37704e056b78fae29049",
+    "tests/managed_iceberg.rs": "05e4a6a343038435bbf81111434fcd22e9356f71eae00165094b6893c304ac0f",
+    "src/checkpoint.rs": "4f05f81cf2ee596ef13042cd518826d4e162f66e33983103d2027cf53f064a3c",
+    "src/instance.rs": "a9c2dd6ad061608e23bc62ca984ea42c6174e75585e8dba7a18f497768f2f835",
+    "src/world_admission.rs": "86490f4f5f9e7348789f9cae96abcebc1b85cc0e4bf1ee924011e287b7c69925",
+    "src/world_workers.rs": "c056602e755099dcd4153ad28e6f24e663650e4307280fe00f859ef6fae026cd",
+    "src/lib.rs": "2b37bf482a72528403a95a1fc7b948f84cba18b8b2107e38b74737327a249b69",
+    "docs/managed-iceberg.md": "6d29be784922756a5987b108d7c66339ed86b45668f9df9c97ff7d62b91907f1",
+    "docs/managed-checkpoints.md": "86ec951531e140347b4fcb783b00be97267af14a1deea22bc43be958367c81c2",
+    "docs/iceberg-checkpoints.md": "d21f0daa8d4d45854e2af12afbc2bdedce4d99de7c8375fbde8f44a7761e7207",
+    "docs/worlds.md": "6d3ba3ddf847453e5229b81474731e9aafc23de4960d100f44fb1c5620ca6f88",
+    "docs/managed-iceberg-next.md": "9ac064857378dbd206963582b2ecd2427a9f1d77db1f7a95444dc764f1c2574b"
+  },
+  "validation": {
+    "host_rust": "1.95.0",
+    "native_ddlog": "1.2.3",
+    "native_rust": "1.65.0",
+    "host_target": "/private/tmp/hhmm-x0-20260929/runtime-target",
+    "native_target": "/private/tmp/hhmm-x0-20260929/runtime-native-target",
+    "fmt": "passed (owned Rust files, skip_children=true)",
+    "clippy": "passed --offline --lib --bin ddlog-worlds -- -D warnings with and without --features iceberg; feature test managed_iceberg also checked",
+    "diff_check": "passed (owned tracked files); new owned files checked for trailing whitespace",
+    "tests": {
+      "managed_iceberg_simulated_transport_real_catalog": {
+        "passed": 4,
+        "seconds": 7.01
+      },
+      "managed_iceberg_native_composition": {
+        "passed": 1,
+        "seconds": 185.84
+      },
+      "memory_runtime_existing_iceberg_engine": {
+        "passed": 1,
+        "seconds": 0.63
+      },
+      "worlds_json_persistence": {
+        "passed": 8,
+        "seconds": 8.97
+      },
+      "worlds_admission": {
+        "passed": 4,
+        "seconds": 4.46
+      },
+      "workers_socket_attached_worker_admission_replay_restore_and_owner_shutdown": {
+        "passed": 1,
+        "seconds": 2.11
+      },
+      "worlds_test_worlds_run_scenarios_asynchronously_and_report_results": {
+        "passed": 1,
+        "seconds": 1.07
+      }
+    },
+    "capture_test_correction": "A prior run passed restore and update/retraction but asserted inspection before the 100 ms capture tailer polled. The fixture now waits at most five seconds for available capture with timely events, matching the existing native JSON test contract. No production change was needed; final native run passed.",
+    "native_driver": "Supported build-ddlog.sh/build-native-artifact.py, owned by the separate build lane; no edits by this slice",
+    "provider_calls": 0,
+    "active_stores_accessed": false,
+    "existing_owners_modified": false
+  },
+  "proof": {
+    "ambiguous_record_reconciled": true,
+    "blocked_catalog_query_ms": 8.581750000000001,
+    "blocked_catalog_status_ms": 31.942333000000005,
+    "capture_generation": 2,
+    "capture_state": "available",
+    "catalog_snapshot_id": "3670372088214088639",
+    "native": true,
+    "provider_calls": 0,
+    "public_composition": true,
+    "published": {
+      "availability": "catalog_unverified",
+      "error": null,
+      "receipt": {
+        "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+        "format": "iceberg",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 2,
+          "world_id": "26065-1790702406512034000-0"
+        },
+        "program": {
+          "dependencies": {
+            "child": {
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            }
+          },
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+            "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "Input_source"
+            },
+            {
+              "fields": [
+                "string"
+              ],
+              "input": true,
+              "name": "unused",
+              "physical": "Input_unused"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "Output_echo"
+            }
+          ],
+          "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+        },
+        "published_at_unix_ms": 1790702515183,
+        "receipt_id": "26065-1790702514478248000-6",
+        "schema_version": 1,
+        "storage": {
+          "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+          "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+          "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+          "profile": "local",
+          "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+          "snapshot_id": "3670372088214088639",
+          "table": [
+            "runtime",
+            "checkpoints"
+          ],
+          "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+        }
+      },
+      "schema_version": 1,
+      "status": "published"
+    },
+    "restore": {
+      "build": null,
+      "definition": {
+        "label": "Iceberg recovery",
+        "processor": {
+          "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+          "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+        }
+      },
+      "error": null,
+      "generation": 2,
+      "history": [
+        {
+          "at_unix_ms": 1790702406513,
+          "error": null,
+          "generation": 0,
+          "restore_requested": null,
+          "restored_from": null,
+          "state": "created"
+        },
+        {
+          "at_unix_ms": 1790702406561,
+          "error": null,
+          "generation": 1,
+          "restore_requested": null,
+          "restored_from": null,
+          "state": "starting"
+        },
+        {
+          "at_unix_ms": 1790702439045,
+          "error": null,
+          "generation": 1,
+          "restore_requested": null,
+          "restored_from": null,
+          "state": "running"
+        },
+        {
+          "at_unix_ms": 1790702514968,
+          "error": null,
+          "generation": 1,
+          "restore_requested": null,
+          "restored_from": null,
+          "state": "stopped"
+        },
+        {
+          "at_unix_ms": 1790702515278,
+          "error": null,
+          "generation": 2,
+          "restore_requested": {
+            "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+            "format": "iceberg",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 2,
+              "world_id": "26065-1790702406512034000-0"
+            },
+            "program": {
+              "dependencies": {
+                "child": {
+                  "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                  "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                }
+              },
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "Input_source"
+                },
+                {
+                  "fields": [
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "unused",
+                  "physical": "Input_unused"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "Output_echo"
+                }
+              ],
+              "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+            },
+            "published_at_unix_ms": 1790702515183,
+            "receipt_id": "26065-1790702514478248000-6",
+            "schema_version": 1,
+            "storage": {
+              "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+              "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+              "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+              "profile": "local",
+              "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+              "snapshot_id": "3670372088214088639",
+              "table": [
+                "runtime",
+                "checkpoints"
+              ],
+              "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+            }
+          },
+          "restored_from": null,
+          "state": "starting"
+        },
+        {
+          "at_unix_ms": 1790702591694,
+          "error": null,
+          "generation": 2,
+          "restore_requested": {
+            "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+            "format": "iceberg",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 2,
+              "world_id": "26065-1790702406512034000-0"
+            },
+            "program": {
+              "dependencies": {
+                "child": {
+                  "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                  "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                }
+              },
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "Input_source"
+                },
+                {
+                  "fields": [
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "unused",
+                  "physical": "Input_unused"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "Output_echo"
+                }
+              ],
+              "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+            },
+            "published_at_unix_ms": 1790702515183,
+            "receipt_id": "26065-1790702514478248000-6",
+            "schema_version": 1,
+            "storage": {
+              "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+              "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+              "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+              "profile": "local",
+              "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+              "snapshot_id": "3670372088214088639",
+              "table": [
+                "runtime",
+                "checkpoints"
+              ],
+              "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+            }
+          },
+          "restored_from": {
+            "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+            "format": "iceberg",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 2,
+              "world_id": "26065-1790702406512034000-0"
+            },
+            "program": {
+              "dependencies": {
+                "child": {
+                  "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                  "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                }
+              },
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "Input_source"
+                },
+                {
+                  "fields": [
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "unused",
+                  "physical": "Input_unused"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "Output_echo"
+                }
+              ],
+              "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+            },
+            "published_at_unix_ms": 1790702515183,
+            "receipt_id": "26065-1790702514478248000-6",
+            "schema_version": 1,
+            "storage": {
+              "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+              "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+              "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+              "profile": "local",
+              "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+              "snapshot_id": "3670372088214088639",
+              "table": [
+                "runtime",
+                "checkpoints"
+              ],
+              "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+            }
+          },
+          "state": "running"
+        }
+      ],
+      "id": "26065-1790702406512034000-0",
+      "inspection": {
+        "metadata": {
+          "authoredGroups": [
+            {
+              "id": "child",
+              "kind": "module",
+              "memberIds": [],
+              "member_key": "child",
+              "member_match": {
+                "debug_pattern": "\\bR_Module0_",
+                "propagate": true
+              },
+              "name": "child",
+              "ports": [],
+              "provenance": {
+                "repository": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                "revision": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6",
+                "source": null
+              }
+            },
+            {
+              "id": "$inputs",
+              "kind": "module",
+              "memberIds": [],
+              "member_key": "$inputs",
+              "member_match": {
+                "debug_pattern": "^Input \\{ rel: \"R_Input_",
+                "propagate": false
+              },
+              "name": "Inputs",
+              "ports": [],
+              "provenance": {
+                "repository": "processor_322879060d7cebd34152854cdfc8b52a",
+                "revision": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd",
+                "source": null
+              }
+            },
+            {
+              "id": "$outputs",
+              "kind": "module",
+              "memberIds": [],
+              "member_key": "$outputs",
+              "member_match": {
+                "debug_pattern": "^InspectOutput \\{ rel: \"R_Output_",
+                "propagate": false
+              },
+              "name": "Outputs",
+              "ports": [],
+              "provenance": {
+                "repository": "processor_322879060d7cebd34152854cdfc8b52a",
+                "revision": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd",
+                "source": null
+              }
+            }
+          ],
+          "schema_version": 1
+        },
+        "reason": "No native capture available; build driver may not support inspection",
+        "schema_version": 1,
+        "state": "missing"
+      },
+      "instance": {
+        "build": {
+          "lowering_version": 2,
+          "native_sha256": "3f4046e61e7fbbf29a038150aec2babe5ef9808c16ebc46173f46c5ccc1057db",
+          "program_version": 1,
+          "runtime": {
+            "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+            "crate_version": "0.1.0",
+            "dirty": true,
+            "schema_version": 1
+          },
+          "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+        },
+        "composition": {
+          "dependencies": {
+            "child": {
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            }
+          },
+          "generated_source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9",
+          "inputs": {
+            "source": "Input_source",
+            "unused": "Input_unused"
+          },
+          "lowering_version": 2,
+          "nodes": {
+            "child": {
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            }
+          },
+          "outputs": {
+            "echo": "Output_echo"
+          },
+          "relations": {
+            "Input_source": {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": "source",
+              "kind": "external_input",
+              "owner": null,
+              "scope": ""
+            },
+            "Input_unused": {
+              "fields": [
+                "string"
+              ],
+              "input": "unused",
+              "kind": "external_input",
+              "owner": null,
+              "scope": ""
+            },
+            "Module0_echo": {
+              "kind": "processor_relation",
+              "node": "child",
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "relation": "echo",
+              "schema": {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": false
+              },
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            },
+            "Module0_source": {
+              "alias_of": "Input_source",
+              "kind": "processor_relation",
+              "node": "child",
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "relation": "source",
+              "schema": {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": true
+              },
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            },
+            "Module0_unused": {
+              "alias_of": "Input_unused",
+              "kind": "processor_relation",
+              "node": "child",
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "relation": "unused",
+              "schema": {
+                "fields": [
+                  "string"
+                ],
+                "input": true
+              },
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            },
+            "Output_echo": {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "from": {
+                "node": "child",
+                "relation": "echo"
+              },
+              "kind": "external_output",
+              "output": "echo",
+              "owner": null,
+              "scope": ""
+            }
+          },
+          "rules": [
+            {
+              "head": "echo",
+              "kind": "processor_rule",
+              "name": null,
+              "node": "child",
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "rule": 0,
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            },
+            {
+              "from": {
+                "node": "child",
+                "relation": "echo"
+              },
+              "kind": "output_binding",
+              "output": "echo",
+              "owner": null,
+              "scope": ""
+            }
+          ]
+        },
+        "health": "ready",
+        "instance_id": "26065-1790702406512034000-0",
+        "lowering_version": 2,
+        "processor": {
+          "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+          "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+        },
+        "program_version": 1,
+        "revision": 2,
+        "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+      },
+      "managed_processes": [
+        {
+          "descendants_included": false,
+          "role": "native",
+          "sample": {
+            "cpu_basis": "ps_decaying_average",
+            "cpu_percent": 5.9,
+            "max_age_ms": 5000,
+            "pid": 34952,
+            "resident_bytes": 20774912,
+            "sampled_at_unix_ms": 1790702591738,
+            "scope": "process",
+            "state": "available"
+          }
+        }
+      ],
+      "owner": {
+        "kind": "embedded",
+        "memory_attribution": "shared_not_attributable",
+        "pid": 26065
+      },
+      "persistence": {
+        "checkpoints": [
+          {
+            "availability": "present_unverified",
+            "error": null,
+            "receipt": {
+              "checkpoint_sha256": "bb81bae183e1ea1d576a000ab83b97ce38fba6d20778f09ba7891271e8963991",
+              "format": "json",
+              "origin": {
+                "build": {
+                  "lowering_version": 2,
+                  "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                  "program_version": 1,
+                  "runtime": {
+                    "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                    "crate_version": "0.1.0",
+                    "dirty": true,
+                    "schema_version": 1
+                  },
+                  "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+                },
+                "generation": 1,
+                "program_version": 1,
+                "revision": 2,
+                "world_id": "26065-1790702406512034000-0"
+              },
+              "program": {
+                "dependencies": {
+                  "child": {
+                    "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                    "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                  }
+                },
+                "lowering_version": 2,
+                "processor": {
+                  "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                  "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+                },
+                "public_relations": [
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "source",
+                    "physical": "Input_source"
+                  },
+                  {
+                    "fields": [
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "unused",
+                    "physical": "Input_unused"
+                  },
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": false,
+                    "name": "echo",
+                    "physical": "Output_echo"
+                  }
+                ],
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "published_at_unix_ms": 1790702514186,
+              "receipt_id": "26065-1790702514127827000-4",
+              "schema_version": 1
+            },
+            "status": "published"
+          },
+          {
+            "availability": "present_unverified",
+            "error": null,
+            "receipt": {
+              "checkpoint_sha256": "ab0cc8ddf9fa8cfb27ac8dbc34e49c1c1fc2f165312a0ab880f2ca7205464007",
+              "format": "json",
+              "origin": {
+                "build": {
+                  "lowering_version": 2,
+                  "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                  "program_version": 1,
+                  "runtime": {
+                    "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                    "crate_version": "0.1.0",
+                    "dirty": true,
+                    "schema_version": 1
+                  },
+                  "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+                },
+                "generation": 1,
+                "program_version": 1,
+                "revision": 2,
+                "world_id": "26065-1790702406512034000-0"
+              },
+              "program": {
+                "dependencies": {
+                  "child": {
+                    "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                    "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                  }
+                },
+                "lowering_version": 2,
+                "processor": {
+                  "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                  "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+                },
+                "public_relations": [
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "source",
+                    "physical": "Input_source"
+                  },
+                  {
+                    "fields": [
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "unused",
+                    "physical": "Input_unused"
+                  },
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": false,
+                    "name": "echo",
+                    "physical": "Output_echo"
+                  }
+                ],
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "published_at_unix_ms": 1790702514410,
+              "receipt_id": "26065-1790702514292951000-5",
+              "schema_version": 1
+            },
+            "status": "published"
+          },
+          {
+            "availability": "catalog_unverified",
+            "error": null,
+            "receipt": {
+              "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+              "format": "iceberg",
+              "origin": {
+                "build": {
+                  "lowering_version": 2,
+                  "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+                  "program_version": 1,
+                  "runtime": {
+                    "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                    "crate_version": "0.1.0",
+                    "dirty": true,
+                    "schema_version": 1
+                  },
+                  "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+                },
+                "generation": 1,
+                "program_version": 1,
+                "revision": 2,
+                "world_id": "26065-1790702406512034000-0"
+              },
+              "program": {
+                "dependencies": {
+                  "child": {
+                    "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                    "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+                  }
+                },
+                "lowering_version": 2,
+                "processor": {
+                  "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+                  "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+                },
+                "public_relations": [
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "source",
+                    "physical": "Input_source"
+                  },
+                  {
+                    "fields": [
+                      "string"
+                    ],
+                    "input": true,
+                    "name": "unused",
+                    "physical": "Input_unused"
+                  },
+                  {
+                    "fields": [
+                      "int",
+                      "string"
+                    ],
+                    "input": false,
+                    "name": "echo",
+                    "physical": "Output_echo"
+                  }
+                ],
+                "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+              },
+              "published_at_unix_ms": 1790702515183,
+              "receipt_id": "26065-1790702514478248000-6",
+              "schema_version": 1,
+              "storage": {
+                "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+                "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+                "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+                "profile": "local",
+                "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+                "snapshot_id": "3670372088214088639",
+                "table": [
+                  "runtime",
+                  "checkpoints"
+                ],
+                "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+              }
+            },
+            "status": "published"
+          }
+        ],
+        "committed_revision": 2,
+        "coverage": "whole_pure_program_inputs",
+        "error": null,
+        "format": "json",
+        "iceberg": {
+          "admission_durability": "json",
+          "error": null,
+          "job": null,
+          "profile": "local",
+          "publication_ack": "catalog_visibility",
+          "published_revision": 2,
+          "schema_version": 1,
+          "status": "configured"
+        },
+        "persisted_revision": null,
+        "restore_requested": {
+          "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+          "format": "iceberg",
+          "origin": {
+            "build": {
+              "lowering_version": 2,
+              "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+              "program_version": 1,
+              "runtime": {
+                "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                "crate_version": "0.1.0",
+                "dirty": true,
+                "schema_version": 1
+              },
+              "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+            },
+            "generation": 1,
+            "program_version": 1,
+            "revision": 2,
+            "world_id": "26065-1790702406512034000-0"
+          },
+          "program": {
+            "dependencies": {
+              "child": {
+                "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+              }
+            },
+            "lowering_version": 2,
+            "processor": {
+              "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+              "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+            },
+            "public_relations": [
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": true,
+                "name": "source",
+                "physical": "Input_source"
+              },
+              {
+                "fields": [
+                  "string"
+                ],
+                "input": true,
+                "name": "unused",
+                "physical": "Input_unused"
+              },
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": false,
+                "name": "echo",
+                "physical": "Output_echo"
+              }
+            ],
+            "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+          },
+          "published_at_unix_ms": 1790702515183,
+          "receipt_id": "26065-1790702514478248000-6",
+          "schema_version": 1,
+          "storage": {
+            "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+            "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+            "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+            "profile": "local",
+            "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+            "snapshot_id": "3670372088214088639",
+            "table": [
+              "runtime",
+              "checkpoints"
+            ],
+            "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+          }
+        },
+        "restored_from": {
+          "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+          "format": "iceberg",
+          "origin": {
+            "build": {
+              "lowering_version": 2,
+              "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+              "program_version": 1,
+              "runtime": {
+                "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                "crate_version": "0.1.0",
+                "dirty": true,
+                "schema_version": 1
+              },
+              "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+            },
+            "generation": 1,
+            "program_version": 1,
+            "revision": 2,
+            "world_id": "26065-1790702406512034000-0"
+          },
+          "program": {
+            "dependencies": {
+              "child": {
+                "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+                "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+              }
+            },
+            "lowering_version": 2,
+            "processor": {
+              "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+              "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+            },
+            "public_relations": [
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": true,
+                "name": "source",
+                "physical": "Input_source"
+              },
+              {
+                "fields": [
+                  "string"
+                ],
+                "input": true,
+                "name": "unused",
+                "physical": "Input_unused"
+              },
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": false,
+                "name": "echo",
+                "physical": "Output_echo"
+              }
+            ],
+            "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+          },
+          "published_at_unix_ms": 1790702515183,
+          "receipt_id": "26065-1790702514478248000-6",
+          "schema_version": 1,
+          "storage": {
+            "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+            "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+            "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+            "profile": "local",
+            "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+            "snapshot_id": "3670372088214088639",
+            "table": [
+              "runtime",
+              "checkpoints"
+            ],
+            "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+          }
+        },
+        "schema_version": 1,
+        "status": "configured",
+        "verification": "Receipt/object presence only; restore verifies integrity and pinned dependencies before compilation"
+      },
+      "resources": {
+        "cpu_basis": "ps_decaying_average",
+        "cpu_percent": 5.9,
+        "max_age_ms": 5000,
+        "pid": 34952,
+        "resident_bytes": 20774912,
+        "sampled_at_unix_ms": 1790702591734,
+        "scope": "process",
+        "state": "available"
+      },
+      "revision": 2,
+      "schema_version": 1,
+      "started_at_unix_ms": 1790702515278,
+      "state": "running",
+      "test": null,
+      "workers": []
+    },
+    "schema_version": 1,
+    "stage_catalog_invisible": true,
+    "staged": {
+      "availability": "catalog_unverified",
+      "error": null,
+      "receipt": {
+        "checkpoint_sha256": "764a265aaee4b5b75ea1a6a7caa80ecff56478af791b448716c66fa7fc3070f9",
+        "format": "iceberg",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "a925df9813475fef0d33760ad7d10819ebbbf77e6242c50c1192c98dceb062d2",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 2,
+          "world_id": "26065-1790702406512034000-0"
+        },
+        "program": {
+          "dependencies": {
+            "child": {
+              "processor_id": "processor_36ae64ccc6c1e3291a8a85993d33ada5",
+              "version": "sha256:a89fe744ac778f7e9dda58280f83fc68c132a3daa6351e7e1e5ec2aabb704bd6"
+            }
+          },
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_322879060d7cebd34152854cdfc8b52a",
+            "version": "sha256:3918cae10d0690e4e70d38297c559f70ca734eb7f156625eaaf1faa4442d42cd"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "Input_source"
+            },
+            {
+              "fields": [
+                "string"
+              ],
+              "input": true,
+              "name": "unused",
+              "physical": "Input_unused"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "Output_echo"
+            }
+          ],
+          "source_sha256": "4477586936bf4c7db619a07523ae0e1c40692abc72968c9c60db38f59e9408b9"
+        },
+        "published_at_unix_ms": null,
+        "receipt_id": "26065-1790702514478248000-6",
+        "schema_version": 1,
+        "storage": {
+          "envelope_sha256": "b5737b4a612861c41891dbe117333cb29f3ee7241d18a57017106edf3830d641",
+          "object_sha256": "d94f8054da7c9aceef7cf37b9a558a62efa25d1c0a5f8a2d2e872af567cea94d",
+          "object_uri": "file:///private/var/folders/qq/pxfnjsk517x5rc0m044m3fnm0000gn/T/managed-iceberg-26065-0/local store/warehouse/objects/26065-1790702514478248000-6.parquet",
+          "profile": "local",
+          "profile_sha256": "d8b20caf7a1de92fd19928eee0690efca12458f671b51668f00f01e1ae5226d7",
+          "snapshot_id": null,
+          "table": [
+            "runtime",
+            "checkpoints"
+          ],
+          "table_uuid": "01a0ee2f-f167-73c1-bc65-8d64b9a01c46"
+        }
+      },
+      "schema_version": 1,
+      "status": "staged"
+    },
+    "unpublished_mutation_excluded": true,
+    "update_retraction": true
+  },
+  "additional_passed_assertions": [
+    "tampered object fails before native compilation",
+    "numeric snapshot IDs rejected; decimal string survives exact receipt validation",
+    "staged receipt is not restorable",
+    "duplicate frozen effect reservation after restore is rejected",
+    "pending publication cannot acknowledge restore before job completion",
+    "deadline/cancellation preserve retained receipt and newer lifecycle",
+    "missing Iceberg catalog does not disable JSON durable admission"
+  ],
+  "limits": [
+    "Catalog visibility is distinct from JSON durable admission and is not power-loss certification.",
+    "One configured local profile and one staging/publication job per owner; restores use normal world startup.",
+    "No remote R2, provider call, active acceptance store, deployment or full HHMM acceptance is claimed.",
+    "Fixture object URIs identify temporary test state, removed after successful cleanup.",
+    "Runtime does not serialize independent world build drivers."
+  ]
+}

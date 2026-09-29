@@ -1,0 +1,612 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-09-29",
+  "scope": "Generic fenced durable admission and runtime-owned trusted external workers; local candidate only",
+  "status": "passed",
+  "source_sha256": {
+    "src/world_workers.rs": "c056602e755099dcd4153ad28e6f24e663650e4307280fe00f859ef6fae026cd",
+    "src/world_admission.rs": "86490f4f5f9e7348789f9cae96abcebc1b85cc0e4bf1ee924011e287b7c69925",
+    "src/world_persistence.rs": "81130ecc86fccb50289b87c5d39ef577d99ecabdcd4ab0f3006dd6192fb6b74e",
+    "src/worlds.rs": "1a8bec81cf8bae8f744fd1ef977e63a3eab9397472d3bb8aa0efdcc2d1e2d867",
+    "src/instance.rs": "a9c2dd6ad061608e23bc62ca984ea42c6174e75585e8dba7a18f497768f2f835",
+    "src/bin/ddlog-worlds.rs": "3cb8d794da92d1959f4ce5afaf07e5767104dc800949a51e3a43bfc0b18ad78e",
+    "src/processes.rs": "97fa41b7d31a5ccfadf1efb506776845c4926d4dd4f19adf2351480725ae206d",
+    "tests/worlds/admission.rs": "83e03ebdbf095bed49a1bf3fabbdb7d9442d9d8a20726003bd3bf639672f77dc",
+    "tests/worlds/workers.rs": "58dee1ee097a8554101f0d4a360d120a2efd90a25f4e986108aaeed70d8201ff",
+    "tests/workers_socket.rs": "115d0b33b032cfc2cb982a24048064089a5a6ed00b88cb2ae1caaeeddb53a114",
+    "tests/fixtures/managed_worker.py": "bda8767163996ff40eec485383fd5ebe68024beb6b2af8e2de1eb42a5890e264",
+    "docs/managed-workers.md": "76164737cfc2c7e6218b6ab873ba9d7f63108ac58a9ad237f0725a8273a8ceb4",
+    "docs/managed-checkpoints.md": "14e4d0682bc686c016c6b10be628f8c0208171e4708f09dc1e072e08cbd4508c"
+  },
+  "validation": {
+    "fmt": "passed (owned Rust paths, skip_children=true)",
+    "clippy": "passed --offline --lib --bin ddlog-worlds --test worlds --test worlds_stdio --test workers_socket -- -D warnings",
+    "diff_check": "passed",
+    "focused_tests": {
+      "worlds": {
+        "passed": 35,
+        "seconds": 32.47
+      },
+      "worlds_stdio": {
+        "passed": 2,
+        "seconds": 2.04
+      },
+      "workers_socket_simulated": {
+        "passed": 1,
+        "seconds": 1.66
+      },
+      "workers_socket_native": {
+        "passed": 1,
+        "seconds": 46.95
+      }
+    },
+    "host_target": "/private/tmp/hhmm-x0-20260929/runtime-target",
+    "native_target": "/private/tmp/hhmm-x0-20260929/runtime-native-target",
+    "native_ddlog": "1.2.3",
+    "native_rust": "1.65.0",
+    "provider_calls": 0
+  },
+  "proof": {
+    "cleanup": "owner, worker descendant and native exited",
+    "competing_admissions": [
+      {
+        "admission_key": "contender-0",
+        "applied_revision": null,
+        "effect_authorized": false,
+        "error": "Expected revision mismatch; request not applied",
+        "generation": 1,
+        "id": "12544-1790700361690018000-0",
+        "publication": "not_attempted",
+        "receipt": null,
+        "replayed": false,
+        "schema_version": 1,
+        "state": "not_applied"
+      },
+      {
+        "admission_key": "contender-1",
+        "applied_revision": 4,
+        "effect_authorized": false,
+        "error": null,
+        "generation": 1,
+        "id": "12544-1790700361690018000-0",
+        "publication": "published",
+        "receipt": {
+          "checkpoint_sha256": "6ced754c27d0cabe466f29406f4f5d6cb23a0564a3d05fcd5030e7d0300ec0f3",
+          "format": "json",
+          "origin": {
+            "build": {
+              "lowering_version": 2,
+              "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+              "program_version": 1,
+              "runtime": {
+                "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                "crate_version": "0.1.0",
+                "dirty": true,
+                "schema_version": 1
+              },
+              "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+            },
+            "generation": 1,
+            "program_version": 1,
+            "revision": 4,
+            "world_id": "12544-1790700361690018000-0"
+          },
+          "program": {
+            "dependencies": {},
+            "lowering_version": 2,
+            "processor": {
+              "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+              "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+            },
+            "public_relations": [
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": true,
+                "name": "source",
+                "physical": "source"
+              },
+              {
+                "fields": [
+                  "int",
+                  "string"
+                ],
+                "input": false,
+                "name": "echo",
+                "physical": "echo"
+              }
+            ],
+            "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+          },
+          "published_at_unix_ms": 1790700384467,
+          "receipt_id": "12544-1790700384438324000-5",
+          "schema_version": 1
+        },
+        "replayed": false,
+        "schema_version": 1,
+        "state": "durable"
+      }
+    ],
+    "native": true,
+    "reserved": {
+      "admission_key": "attached.reserve",
+      "applied_revision": 2,
+      "effect_authorized": true,
+      "error": null,
+      "generation": 1,
+      "id": "12544-1790700361690018000-0",
+      "publication": "published",
+      "receipt": {
+        "checkpoint_sha256": "8b266759e37343ee7fb183ed96ef57ffdf279118129bfbf5911714a80e3e6da2",
+        "format": "json",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 2,
+          "world_id": "12544-1790700361690018000-0"
+        },
+        "program": {
+          "dependencies": {},
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+            "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "source"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "echo"
+            }
+          ],
+          "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+        },
+        "published_at_unix_ms": 1790700384109,
+        "receipt_id": "12544-1790700384074674000-3",
+        "schema_version": 1
+      },
+      "replayed": false,
+      "schema_version": 1,
+      "state": "durable"
+    },
+    "restored": {
+      "checkpoints": [
+        {
+          "availability": "present_unverified",
+          "error": null,
+          "receipt": {
+            "checkpoint_sha256": "8b266759e37343ee7fb183ed96ef57ffdf279118129bfbf5911714a80e3e6da2",
+            "format": "json",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 2,
+              "world_id": "12544-1790700361690018000-0"
+            },
+            "program": {
+              "dependencies": {},
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+                "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "source"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "echo"
+                }
+              ],
+              "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+            },
+            "published_at_unix_ms": 1790700384109,
+            "receipt_id": "12544-1790700384074674000-3",
+            "schema_version": 1
+          },
+          "status": "published"
+        },
+        {
+          "availability": "present_unverified",
+          "error": null,
+          "receipt": {
+            "checkpoint_sha256": "07670bd090404a6c36e43c5afad0bf9dc867873e9b1b516e4dc80bf8efcb1eaf",
+            "format": "json",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 3,
+              "world_id": "12544-1790700361690018000-0"
+            },
+            "program": {
+              "dependencies": {},
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+                "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "source"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "echo"
+                }
+              ],
+              "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+            },
+            "published_at_unix_ms": 1790700384316,
+            "receipt_id": "12544-1790700384288326000-4",
+            "schema_version": 1
+          },
+          "status": "published"
+        },
+        {
+          "availability": "present_unverified",
+          "error": null,
+          "receipt": {
+            "checkpoint_sha256": "6ced754c27d0cabe466f29406f4f5d6cb23a0564a3d05fcd5030e7d0300ec0f3",
+            "format": "json",
+            "origin": {
+              "build": {
+                "lowering_version": 2,
+                "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+                "program_version": 1,
+                "runtime": {
+                  "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                  "crate_version": "0.1.0",
+                  "dirty": true,
+                  "schema_version": 1
+                },
+                "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+              },
+              "generation": 1,
+              "program_version": 1,
+              "revision": 4,
+              "world_id": "12544-1790700361690018000-0"
+            },
+            "program": {
+              "dependencies": {},
+              "lowering_version": 2,
+              "processor": {
+                "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+                "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+              },
+              "public_relations": [
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": true,
+                  "name": "source",
+                  "physical": "source"
+                },
+                {
+                  "fields": [
+                    "int",
+                    "string"
+                  ],
+                  "input": false,
+                  "name": "echo",
+                  "physical": "echo"
+                }
+              ],
+              "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+            },
+            "published_at_unix_ms": 1790700384467,
+            "receipt_id": "12544-1790700384438324000-5",
+            "schema_version": 1
+          },
+          "status": "published"
+        }
+      ],
+      "committed_revision": 2,
+      "coverage": "whole_pure_program_inputs",
+      "error": null,
+      "format": "json",
+      "persisted_revision": 2,
+      "restore_requested": {
+        "checkpoint_sha256": "8b266759e37343ee7fb183ed96ef57ffdf279118129bfbf5911714a80e3e6da2",
+        "format": "json",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 2,
+          "world_id": "12544-1790700361690018000-0"
+        },
+        "program": {
+          "dependencies": {},
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+            "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "source"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "echo"
+            }
+          ],
+          "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+        },
+        "published_at_unix_ms": 1790700384109,
+        "receipt_id": "12544-1790700384074674000-3",
+        "schema_version": 1
+      },
+      "restored_from": {
+        "checkpoint_sha256": "8b266759e37343ee7fb183ed96ef57ffdf279118129bfbf5911714a80e3e6da2",
+        "format": "json",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 2,
+          "world_id": "12544-1790700361690018000-0"
+        },
+        "program": {
+          "dependencies": {},
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+            "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "source"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "echo"
+            }
+          ],
+          "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+        },
+        "published_at_unix_ms": 1790700384109,
+        "receipt_id": "12544-1790700384074674000-3",
+        "schema_version": 1
+      },
+      "schema_version": 1,
+      "status": "configured",
+      "verification": "Receipt/object presence only; restore verifies integrity and pinned dependencies before compilation"
+    },
+    "schema_version": 1,
+    "settled": {
+      "admission_key": "attached.settle",
+      "applied_revision": 3,
+      "effect_authorized": false,
+      "error": null,
+      "generation": 1,
+      "id": "12544-1790700361690018000-0",
+      "publication": "published",
+      "receipt": {
+        "checkpoint_sha256": "07670bd090404a6c36e43c5afad0bf9dc867873e9b1b516e4dc80bf8efcb1eaf",
+        "format": "json",
+        "origin": {
+          "build": {
+            "lowering_version": 2,
+            "native_sha256": "c562d29968a76bc0aa6566764f3c03ab39972796226d3acdb238ce388e342cbc",
+            "program_version": 1,
+            "runtime": {
+              "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+              "crate_version": "0.1.0",
+              "dirty": true,
+              "schema_version": 1
+            },
+            "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+          },
+          "generation": 1,
+          "program_version": 1,
+          "revision": 3,
+          "world_id": "12544-1790700361690018000-0"
+        },
+        "program": {
+          "dependencies": {},
+          "lowering_version": 2,
+          "processor": {
+            "processor_id": "processor_3c1b51e4abbd4a8b3e0ae8296aeed9b0",
+            "version": "sha256:746b2572edc03adc67a08467e65914b6823d3b410f049e1523106cc96bf51647"
+          },
+          "public_relations": [
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": true,
+              "name": "source",
+              "physical": "source"
+            },
+            {
+              "fields": [
+                "int",
+                "string"
+              ],
+              "input": false,
+              "name": "echo",
+              "physical": "echo"
+            }
+          ],
+          "source_sha256": "14e803dbcf6e595bf20581dd1d925f4195dbbeff9b2709a6eb20ab76f4eb9f22"
+        },
+        "published_at_unix_ms": 1790700384316,
+        "receipt_id": "12544-1790700384288326000-4",
+        "schema_version": 1
+      },
+      "replayed": false,
+      "schema_version": 1,
+      "state": "durable"
+    },
+    "worker": {
+      "error": null,
+      "exit_code": 0,
+      "finished_at_unix_ms": 1790700384380,
+      "generation": 1,
+      "key": "attached",
+      "last_resources": {
+        "cpu_basis": "ps_decaying_average",
+        "cpu_percent": 0.0,
+        "max_age_ms": 5000,
+        "pid": 13657,
+        "resident_bytes": 32768,
+        "sampled_at_unix_ms": 1790700383928,
+        "scope": "process",
+        "state": "available"
+      },
+      "outcome": {
+        "code": "fixture_ok",
+        "schema_version": 1,
+        "status": "completed"
+      },
+      "pid": 13657,
+      "profile": "fixture",
+      "profile_sha256": "89258486f569109c562474c223a531ae19d3ddf35483badafdfd37d8f8d34630",
+      "request_sha256": "501e7f991db893fe06452a3f3a9b9306366867c6d113f85ab8419f30cd69841c",
+      "resources": {
+        "cpu_basis": "ps_decaying_average",
+        "cpu_percent": null,
+        "max_age_ms": 5000,
+        "pid": null,
+        "resident_bytes": null,
+        "sampled_at_unix_ms": 1790700384390,
+        "scope": "process",
+        "state": "missing"
+      },
+      "schema_version": 1,
+      "started_at_unix_ms": 1790700383916,
+      "state": "completed",
+      "worker_id": "12544-1790700383916408000-2"
+    }
+  },
+  "limits": [
+    "Native receipts and process samples are historical fixture evidence; temporary test stores were removed after assertions.",
+    "Reservation authority is fresh-response-only. Lost responses, publication errors and uncertain outcomes never authorize automatic effect retry.",
+    "Restoring a checkpoint preceding an effect or explicitly starting fresh is not an exactly-once guarantee across that rollback.",
+    "Cleanup covers world/worker cancellation and graceful owner shutdown; uncatchable owner death cannot run cleanup. Recovery never adopts or signals stored PIDs.",
+    "Same-user workers are trusted, not a hostile-client sandbox; they must carry worker_id and use the fenced APIs.",
+    "Parent-owned registry/library importer, Python client, and native build-lock changes are separate integration work."
+  ]
+}

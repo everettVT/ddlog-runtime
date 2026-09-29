@@ -58,6 +58,15 @@ contracts. Registration alone never starts execution. See [world lifecycle and
 protocol](docs/worlds.md) and [inspection metadata](docs/inspection.md). Existing
 `ProgramInstance` and shared-host callers remain supported.
 
+Saved [library artifacts](docs/library-artifacts.md) import exact definition pins
+and scenarios without execution. Attached clients share the small
+[Python SDK](python/README.md); their connection lifetime does not own worlds.
+The owner supervises [managed workers and durable admissions](docs/managed-workers.md),
+while application packages own prompts, tools and provider behavior. Explicit
+[JSON recovery](docs/managed-checkpoints.md) and optional
+[local Iceberg publication](docs/managed-iceberg.md) restore into fresh generations;
+neither automatically retries external calls.
+
 ## MCP
 
 ```sh

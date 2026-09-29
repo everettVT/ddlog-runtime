@@ -40,6 +40,9 @@ fn request(manager: &mut WorldManager, request: Value) -> Result<Value, String> 
         "library_create" => {
             manager.create_library(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
         }
+        "library_import" => {
+            manager.library_import(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
         "create" => {
             let definition: WorldDefinition =
                 serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
@@ -47,6 +50,31 @@ fn request(manager: &mut WorldManager, request: Value) -> Result<Value, String> 
             manager.status(&id)
         }
         "start" => manager.start_async(id()?),
+        "checkpoint" => manager.checkpoint(id()?),
+        "checkpoint_stage" => manager
+            .checkpoint_stage(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?),
+        "checkpoint_publish" => manager
+            .checkpoint_publish(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?),
+        "checkpoint_status" => manager
+            .checkpoint_status(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?),
+        "restore" => manager.restore_async(id()?, &args["receipt"]),
+        "worker_start" => {
+            manager.worker_start(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
+        "worker_status" => {
+            manager.worker_status(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
+        "worker_stop" => {
+            manager.worker_stop(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
+        "read_batch" => {
+            manager.read_batch(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
+        "admit_inputs" => {
+            manager.admit_inputs(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?)
+        }
+        "admission_status" => manager
+            .admission_status(serde_json::from_value(args.clone()).map_err(|e| e.to_string())?),
         "stop" => manager.stop(id()?),
         "status" | "inspect" => manager.status(id()?),
         "register" => {
@@ -107,17 +135,41 @@ static STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let socket_mode = args.len() == 5 && args[3] == "--listen";
-    if args.len() != 3 && !socket_mode {
+    if args.len() < 3 || (args.len() - 3) % 2 != 0 {
         return Err(
-            "Usage: ddlog-worlds REGISTRY BUILD_ROOT BUILD_DRIVER [--listen ENDPOINT.json]".into(),
+            "Usage: ddlog-worlds REGISTRY BUILD_ROOT BUILD_DRIVER [--listen ENDPOINT.json [--worker-profiles PROFILES.json]] [--storage-profile PROFILE.json]".into(),
         );
     }
+    let mut endpoint = None;
+    let mut profiles = None;
+    let mut storage_profile = None;
+    for pair in args[3..].chunks_exact(2) {
+        match pair[0].as_str() {
+            "--listen" if endpoint.is_none() => endpoint = Some(std::path::Path::new(&pair[1])),
+            "--worker-profiles" if profiles.is_none() => {
+                profiles = Some(std::path::Path::new(&pair[1]))
+            }
+            "--storage-profile" if storage_profile.is_none() => {
+                storage_profile = Some(std::path::Path::new(&pair[1]))
+            }
+            _ => return Err("Unknown or duplicate owner option".into()),
+        }
+    }
+    if profiles.is_some() && endpoint.is_none() {
+        return Err("Worker profiles require --listen".into());
+    }
+    let socket_mode = endpoint.is_some();
     let mut manager = WorldManager::new(
         args[0].clone().into(),
         args[1].clone().into(),
         args[2].clone().into(),
     )?;
+    if let Some(profiles) = profiles {
+        manager.configure_workers(profiles, endpoint.unwrap().to_path_buf())?;
+    }
+    if let Some(profile) = storage_profile {
+        manager.configure_storage(profile)?;
+    }
     #[cfg(unix)]
     {
         use std::sync::atomic::Ordering;
@@ -142,8 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if socket_mode {
         #[cfg(unix)]
-        return worlds_socket::serve(manager, std::path::Path::new(&args[4]), &STOP)
-            .map_err(Into::into);
+        return worlds_socket::serve(manager, endpoint.unwrap(), &STOP).map_err(Into::into);
         #[cfg(not(unix))]
         return Err("Independent owner attachment requires Unix".into());
     }

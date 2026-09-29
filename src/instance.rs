@@ -1,10 +1,12 @@
 //! Program state and semantic operations, independent of MCP and connections.
 use crate::composition::CompositionResolution;
-use crate::registry::{GitProvenance, ProcessorDefinition, ProcessorRegistry, ProcessorVersion};
+use crate::registry::{
+    GitProvenance, ProcessorDefinition, ProcessorReference, ProcessorRegistry, ProcessorVersion,
+};
 use crate::{AgentProgram, Backend, LoweringOptions, Operation, Schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// One relation addressable through a world's public tools. `physical` is the
 /// generated native relation name; every other field is the public contract.
@@ -76,6 +78,100 @@ pub fn public_relations(record: &ProcessorVersion) -> Result<Vec<PublicRelation>
     }
 }
 
+/// Identity of the actual pure program build, independent of native execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProgramIdentity {
+    pub processor: ProcessorReference,
+    pub dependencies: BTreeMap<String, ProcessorReference>,
+    pub public_relations: Vec<PublicRelation>,
+    pub lowering_version: u32,
+    pub source_sha256: String,
+}
+
+/// The same lowering and public admission mapping serve install and restore.
+/// Preparing this plan validates pins/dependencies without starting a compiler.
+struct PreparedProgram {
+    source: String,
+    schemas: BTreeMap<String, Schema>,
+    interface: Option<PublicInterface>,
+    composition: Option<CompositionResolution>,
+    identity: ProgramIdentity,
+}
+impl PreparedProgram {
+    fn new(
+        registry: &ProcessorRegistry,
+        record: &ProcessorVersion,
+        version: u32,
+    ) -> Result<Self, String> {
+        let options = LoweringOptions::for_version(version)?;
+        let (source, schemas, interface, composition) = match &record.definition {
+            ProcessorDefinition::Composition(definition) => {
+                let compiled =
+                    registry.compile_composition_versioned(&definition.composition, version)?;
+                let interface = PublicInterface {
+                    inputs: compiled.resolution.inputs.clone(),
+                    outputs: compiled.resolution.outputs.clone(),
+                };
+                (
+                    compiled.source,
+                    compiled.schemas,
+                    Some(interface),
+                    Some(compiled.resolution),
+                )
+            }
+            ProcessorDefinition::Program(definition) => {
+                if definition.operation.is_some() {
+                    return Err(
+                        "Registered-operation programs do not support managed checkpoints".into(),
+                    );
+                }
+                let schemas = serde_json::from_value(definition.schemas.clone())
+                    .map_err(|e| e.to_string())?;
+                let exports = definition
+                    .interface
+                    .as_ref()
+                    .map(|i| i.outputs.iter().cloned().collect());
+                let source = crate::lower_with_options(
+                    &definition.rules,
+                    &schemas,
+                    &definition.operators,
+                    &options,
+                    exports.as_ref(),
+                )?;
+                let interface = definition
+                    .interface
+                    .as_ref()
+                    .map(PublicInterface::from_program);
+                (source, schemas, interface, None)
+            }
+        };
+        let mut actual = record.clone();
+        actual.composition = composition.clone();
+        use sha2::{Digest, Sha256};
+        let identity = ProgramIdentity {
+            processor: ProcessorReference {
+                processor_id: record.processor_id.clone(),
+                version: record.version.clone(),
+            },
+            dependencies: composition
+                .as_ref()
+                .map(|c| c.dependencies.clone())
+                .unwrap_or_default(),
+            public_relations: public_relations(&actual)?,
+            lowering_version: version,
+            source_sha256: format!("{:x}", Sha256::digest(source.as_bytes())),
+        };
+        Ok(Self {
+            source,
+            schemas,
+            interface,
+            composition,
+            identity,
+        })
+    }
+}
+
 /// Continuation for paged reads of retained input facts. Output continuations
 /// are the native-bound [`crate::QueryCursor`]; both are opaque to callers.
 #[derive(Serialize, Deserialize)]
@@ -142,6 +238,7 @@ impl ProgramInstance {
                 "processor":self.processor,"composition":self.composition,
                 "revision":live.then(|| self.backend.revision()),
                 "program_version":live.then_some(self.backend.version),
+                "build":live.then(|| self.backend.build_identity()),
                 "source_sha256":live.then(|| self.backend.source_sha256()),
                 "lowering_version":live.then(|| self.backend.lowering_version()),
             }));
@@ -348,6 +445,14 @@ impl ProgramInstance {
         if !(1..=crate::MAX_QUERY_ROWS).contains(&max_rows) {
             return Err(format!("max_rows must be in 1..={}", crate::MAX_QUERY_ROWS));
         }
+        let max_bytes = match a.get("max_bytes") {
+            None | Some(Value::Null) => crate::MAX_QUERY_BYTES,
+            Some(value) => usize::try_from(value.as_u64().ok_or("max_bytes must be an integer")?)
+                .map_err(|e| e.to_string())?,
+        };
+        if !(2..=crate::MAX_QUERY_BYTES).contains(&max_bytes) {
+            return Err("Invalid query byte limit".into());
+        }
         let relation = self
             .public_relations()?
             .into_iter()
@@ -355,6 +460,9 @@ impl ProgramInstance {
             .ok_or_else(|| format!("Unknown public relation {predicate}"))?;
         let continuation = a.get("continuation").filter(|value| !value.is_null());
         if relation.input {
+            if self.backend.health() != "ready" {
+                return Err("Input query requires a healthy initialized runtime".into());
+            }
             let offset = match continuation {
                 Some(cursor) => {
                     let cursor: InputCursor =
@@ -371,27 +479,43 @@ impl ProgramInstance {
                 }
                 None => 0,
             };
-            let inputs = self.backend.export_inputs()?;
-            let all = inputs
-                .get(&relation.physical)
-                .ok_or("Retained input schema missing")?;
-            if offset > all.len() {
+            let all = self
+                .backend
+                .facts
+                .iter()
+                .filter(|((name, _), _)| name == &relation.physical)
+                .map(|(_, row)| row);
+            let total = all.clone().count();
+            if offset > total {
                 return Err("Continuation offset exceeds the selected relation".into());
             }
-            let rows: Vec<Vec<Value>> = all.iter().skip(offset).take(max_rows).cloned().collect();
+            let mut rows = Vec::new();
+            let mut bytes = 2;
+            for row in all.skip(offset).take(max_rows) {
+                let size = serde_json::to_vec(row).map_err(|e| e.to_string())?.len()
+                    + usize::from(!rows.is_empty());
+                if bytes + size > max_bytes {
+                    if rows.is_empty() {
+                        return Err("Input row exceeds query byte limit".into());
+                    }
+                    break;
+                }
+                bytes += size;
+                rows.push(row.clone());
+            }
             let end = offset + rows.len();
-            let complete = end >= all.len();
+            let complete = end >= total;
             let revision = self.backend.revision();
             return Ok(json!({
                 "predicate":predicate,"revision":revision,"fields":relation.fields,"rows":rows,
-                "total":all.len(),"complete":complete,
+                "total":total,"complete":complete,
                 "continuation":(!complete).then(|| json!(InputCursor{kind:"input".into(),revision,predicate:predicate.into(),offset:end})),
             }));
         }
         let query = crate::BoundedQuery {
             filters: BTreeMap::new(),
             max_rows,
-            max_bytes: crate::MAX_QUERY_BYTES,
+            max_bytes,
             continuation: continuation
                 .map(|cursor| serde_json::from_value(cursor.clone()).map_err(|e| e.to_string()))
                 .transpose()?,
@@ -495,6 +619,95 @@ impl ProgramInstance {
         serde_json::to_value(record).map_err(|e| e.to_string())
     }
 
+    pub(crate) fn prepare_admission_changes(&self, changes: &Value) -> Result<Value, String> {
+        if self.agent.is_some() {
+            return Err("Durable input admission requires a pure program".into());
+        }
+        let changes = self
+            .interface
+            .as_ref()
+            .map(|i| i.changes(changes))
+            .unwrap_or_else(|| Ok(changes.clone()))?;
+        for change in changes.as_array().ok_or("Expected changes array")? {
+            if !matches!(change["op"].as_str(), Some("insert" | "delete")) {
+                return Err("Expected insert or delete".into());
+            }
+            self.backend.fact(
+                string(change, "predicate")?,
+                change["values"].as_array().ok_or("Expected input values")?,
+            )?;
+        }
+        Ok(changes)
+    }
+
+    fn install_pure(&mut self, record: &ProcessorVersion, version: u32) -> Result<Value, String> {
+        let prepared = PreparedProgram::new(self.registry.as_ref().unwrap(), record, version)?;
+        let result = self.backend.install_source(
+            prepared.source,
+            prepared.schemas,
+            LoweringOptions::for_version(version)?,
+        )?;
+        self.interface = prepared.interface;
+        self.composition = prepared.composition;
+        Ok(result)
+    }
+
+    pub(crate) fn checkpoint_identity(&self) -> Result<ProgramIdentity, String> {
+        let record = self
+            .record
+            .as_ref()
+            .ok_or("Checkpoint requires a pinned instance")?;
+        let registry = self
+            .registry
+            .as_ref()
+            .ok_or("Processor registry is not configured")?;
+        let verified = registry.get(&record.processor_id, Some(&record.version))?;
+        let prepared = PreparedProgram::new(registry, &verified, self.backend.lowering_version())?;
+        if self.agent.is_some()
+            || prepared.source != self.backend.active_source
+            || prepared.schemas != self.backend.schema
+        {
+            return Err("Installed program does not match its pinned checkpoint identity".into());
+        }
+        Ok(prepared.identity)
+    }
+
+    /// Validate the complete checkpoint against its exact pinned lowering before
+    /// Backend compiles anything; activate public admission only after replay.
+    pub(crate) fn restore_pinned(
+        &mut self,
+        bytes: &[u8],
+        identity: &ProgramIdentity,
+    ) -> Result<(), String> {
+        if self.processor.is_some() || self.agent.is_some() {
+            return Err("Restore requires a fresh pinned instance".into());
+        }
+        let registry = self
+            .registry
+            .as_ref()
+            .ok_or("Processor registry is not configured")?;
+        registry.ensure_active(&identity.processor.processor_id)?;
+        let record = registry.get(
+            &identity.processor.processor_id,
+            Some(&identity.processor.version),
+        )?;
+        let prepared = PreparedProgram::new(registry, &record, identity.lowering_version)?;
+        let (_, state) = crate::checkpoint::inspect(bytes)?;
+        if &prepared.identity != identity
+            || state.source != prepared.source
+            || state.schemas != prepared.schemas
+            || state.lowering_version != identity.lowering_version
+        {
+            return Err("Checkpoint does not match pinned program, dependencies, public interfaces or lowering".into());
+        }
+        self.backend.restore_checkpoint_bytes(bytes)?;
+        self.interface = prepared.interface;
+        self.composition = prepared.composition;
+        self.processor = Some(json!(identity.processor));
+        self.record = Some(record);
+        Ok(())
+    }
+
     fn install_processor(&mut self, a: &Value) -> Result<Value, String> {
         if self.backend.health() != "uninitialized" || self.agent.is_some() {
             return Err("Select a processor only in a fresh instance".into());
@@ -512,82 +725,43 @@ impl ProgramInstance {
                 a.get("version").map(|_| string(a, "version")).transpose()?,
             )?;
         let pinned = record.clone();
-        // An explicit `lowering_version` argument overrides the instance
-        // default for this build only; the pinned record stays as registered.
         let lowering_version = lowering_version(a, self.backend.lowering_version())?;
-        let lowering = LoweringOptions::for_version(lowering_version)?;
         self.backend.set_lowering_version(lowering_version)?;
-        let mut result = match record.definition {
-            ProcessorDefinition::Composition(definition) => {
-                let compiled = self
-                    .registry
+        let mut result = if let ProcessorDefinition::Program(definition) = &record.definition {
+            if let Some(binding) = &definition.operation {
+                if !definition.operators.is_empty() {
+                    return Err("Typed operators cannot be combined with a registered operation; put the operator in a separate pure program".into());
+                }
+                let operation = self
+                    .operations
+                    .get(&binding.name)
+                    .ok_or("Pinned operation is not registered on this host")?
+                    .clone();
+                if operation.version != binding.version
+                    || operation.description != binding.description
+                {
+                    return Err(
+                        "Pinned operation definition does not match this host registry".into(),
+                    );
+                }
+                let (agent, result) = AgentProgram::install(
+                    &mut self.backend,
+                    &binding.name,
+                    operation,
+                    &definition.rules,
+                    definition.schemas.clone(),
+                )?;
+                self.agent = Some(agent);
+                self.interface = definition
+                    .interface
                     .as_ref()
-                    .unwrap()
-                    .compile_composition_versioned(&definition.composition, lowering_version)?;
-                let result =
-                    self.backend
-                        .install_source(compiled.source, compiled.schemas, lowering)?;
-                self.interface = Some(PublicInterface {
-                    inputs: compiled.resolution.inputs.clone(),
-                    outputs: compiled.resolution.outputs.clone(),
-                });
-                self.composition = Some(compiled.resolution);
+                    .map(PublicInterface::from_program);
                 result
+            } else {
+                self.install_pure(&record, lowering_version)?
             }
-            ProcessorDefinition::Program(definition) => {
-                let result = if let Some(binding) = definition.operation {
-                    if !definition.operators.is_empty() {
-                        return Err("Typed operators cannot be combined with a registered operation; put the operator in a separate pure program".into());
-                    }
-                    let operation = self
-                        .operations
-                        .get(&binding.name)
-                        .ok_or("Pinned operation is not registered on this host")?
-                        .clone();
-                    if operation.version != binding.version
-                        || operation.description != binding.description
-                    {
-                        return Err(
-                            "Pinned operation definition does not match this host registry".into(),
-                        );
-                    }
-                    let (agent, result) = AgentProgram::install(
-                        &mut self.backend,
-                        &binding.name,
-                        operation,
-                        &definition.rules,
-                        definition.schemas,
-                    )?;
-                    self.agent = Some(agent);
-                    result
-                } else {
-                    let schema: BTreeMap<String, Schema> =
-                        serde_json::from_value(definition.schemas).map_err(|e| e.to_string())?;
-                    let exports: Option<BTreeSet<String>> = definition
-                        .interface
-                        .as_ref()
-                        .map(|interface| interface.outputs.iter().cloned().collect());
-                    self.backend.install_program(
-                        &definition.rules,
-                        schema,
-                        &definition.operators,
-                        exports.as_ref(),
-                    )?
-                };
-                self.interface = definition.interface.map(|interface| PublicInterface {
-                    inputs: interface
-                        .inputs
-                        .into_iter()
-                        .map(|name| (name.clone(), name))
-                        .collect(),
-                    outputs: interface
-                        .outputs
-                        .into_iter()
-                        .map(|name| (name.clone(), name))
-                        .collect(),
-                });
-                result
-            }
+        } else {
+            self.install_pure(&record, lowering_version)?
         };
         self.processor = Some(json!({"processor_id":record.processor_id,"version":record.version}));
         self.record = Some(pinned);
@@ -606,6 +780,18 @@ struct PublicInterface {
     outputs: BTreeMap<String, String>,
 }
 impl PublicInterface {
+    fn from_program(interface: &crate::composition::ProgramInterface) -> Self {
+        let ports = |names: &[String]| {
+            names
+                .iter()
+                .map(|name| (name.clone(), name.clone()))
+                .collect()
+        };
+        Self {
+            inputs: ports(&interface.inputs),
+            outputs: ports(&interface.outputs),
+        }
+    }
     fn changes(&self, changes: &Value) -> Result<Value, String> {
         let mut mapped = changes.as_array().ok_or("Expected changes array")?.clone();
         for change in &mut mapped {

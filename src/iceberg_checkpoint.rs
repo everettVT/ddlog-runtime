@@ -116,74 +116,8 @@ impl Backend {
         object_uri: &str,
         metadata: Value,
     ) -> Result<StagedCheckpoint> {
-        validate_table(table)?;
-        if !id_valid(publication_id) {
-            return Err("Invalid checkpoint publication ID".into());
-        }
         let checkpoint = self.checkpoint_bytes(metadata)?;
-        let digest = hash(&checkpoint);
-        if table
-            .file_io()
-            .new_input(object_uri)
-            .map_err(err)?
-            .exists()
-            .await
-            .map_err(err)?
-        {
-            return Err(
-                "Object already exists; retry with the retained staged receipt, never overwrite"
-                    .into(),
-            );
-        }
-        let arrays: Vec<ArrayRef> = vec![
-            Arc::new(StringArray::from(vec![publication_id])),
-            Arc::new(StringArray::from(vec![digest.as_str()])),
-            Arc::new(LargeBinaryArray::from(vec![checkpoint.as_slice()])),
-        ];
-        let batch = RecordBatch::try_new(
-            Arc::new(schema_to_arrow_schema(&schema()?).map_err(err)?),
-            arrays,
-        )
-        .map_err(err)?;
-        let mut writer = ParquetWriterBuilder::new(
-            WriterProperties::builder().build(),
-            table.metadata().current_schema().clone(),
-        )
-        .build(table.file_io().new_output(object_uri).map_err(err)?)
-        .await
-        .map_err(err)?;
-        writer.write(&batch).await.map_err(err)?;
-        let builders = writer.close().await.map_err(err)?;
-        if builders.len() != 1 {
-            return Err("Unexpected checkpoint file inventory".into());
-        }
-        let bytes = table
-            .file_io()
-            .new_input(object_uri)
-            .map_err(err)?
-            .read()
-            .await
-            .map_err(err)?;
-        if bytes.len() > MAX_BYTES + 1024 * 1024 {
-            return Err("Parquet checkpoint exceeds transport limit".into());
-        }
-        let mut receipt = StagedCheckpoint {
-            publication_id: publication_id.into(),
-            table_uuid: table.metadata().uuid().to_string(),
-            checkpoint_sha256: digest,
-            object_uri: object_uri.into(),
-            object_sha256: hash(&bytes),
-            descriptor_avro: Vec::new(),
-        };
-        validate_parquet(bytes.clone(), &receipt)?;
-        write_data_files_to_avro(
-            &mut receipt.descriptor_avro,
-            vec![descriptor(table, &receipt.object_uri, bytes.len())?],
-            table.metadata().default_partition_type(),
-            FormatVersion::V3,
-        )
-        .map_err(err)?;
-        Ok(receipt)
+        stage_bytes(table, publication_id, object_uri, &checkpoint).await
     }
 
     /// Read the explicitly selected publication through a pinned Iceberg scan,
@@ -194,11 +128,109 @@ impl Backend {
         ident: &TableIdent,
         receipt: &StagedCheckpoint,
     ) -> Result<Value> {
-        let table = catalog.load_table(ident).await.map_err(err)?;
-        let snapshot = find_snapshot(&table, receipt)?.ok_or("Checkpoint not catalog-visible")?;
-        let bytes = read_checkpoint(&table, snapshot, receipt).await?;
+        let bytes = load_bytes(catalog, ident, receipt).await?;
         self.restore_checkpoint_bytes(&bytes)
     }
+}
+
+/// Stage an already frozen format-1 snapshot. No native instance or owner lock
+/// is held while FileIO/catalog work runs. Uses the same single Arrow payload.
+pub async fn stage_bytes(
+    table: &Table,
+    publication_id: &str,
+    object_uri: &str,
+    checkpoint: &[u8],
+) -> Result<StagedCheckpoint> {
+    validate_table(table)?;
+    if !id_valid(publication_id) {
+        return Err("Invalid checkpoint publication ID".into());
+    }
+    crate::checkpoint::validate_encoded(checkpoint)?;
+    let digest = hash(checkpoint);
+    if table
+        .file_io()
+        .new_input(object_uri)
+        .map_err(err)?
+        .exists()
+        .await
+        .map_err(err)?
+    {
+        return Err(
+            "Object already exists; retry with the retained staged receipt, never overwrite".into(),
+        );
+    }
+    let arrays: Vec<ArrayRef> = vec![
+        Arc::new(StringArray::from(vec![publication_id])),
+        Arc::new(StringArray::from(vec![digest.as_str()])),
+        Arc::new(LargeBinaryArray::from(vec![checkpoint])),
+    ];
+    let batch = RecordBatch::try_new(
+        Arc::new(schema_to_arrow_schema(&schema()?).map_err(err)?),
+        arrays,
+    )
+    .map_err(err)?;
+    let mut writer = ParquetWriterBuilder::new(
+        WriterProperties::builder().build(),
+        table.metadata().current_schema().clone(),
+    )
+    .build(table.file_io().new_output(object_uri).map_err(err)?)
+    .await
+    .map_err(err)?;
+    writer.write(&batch).await.map_err(err)?;
+    let builders = writer.close().await.map_err(err)?;
+    if builders.len() != 1 {
+        return Err("Unexpected checkpoint file inventory".into());
+    }
+    let bytes = table
+        .file_io()
+        .new_input(object_uri)
+        .map_err(err)?
+        .read()
+        .await
+        .map_err(err)?;
+    if bytes.len() > MAX_BYTES + 1024 * 1024 {
+        return Err("Parquet checkpoint exceeds transport limit".into());
+    }
+    let mut receipt = StagedCheckpoint {
+        publication_id: publication_id.into(),
+        table_uuid: table.metadata().uuid().to_string(),
+        checkpoint_sha256: digest,
+        object_uri: object_uri.into(),
+        object_sha256: hash(&bytes),
+        descriptor_avro: Vec::new(),
+    };
+    validate_parquet(bytes.clone(), &receipt)?;
+    write_data_files_to_avro(
+        &mut receipt.descriptor_avro,
+        vec![descriptor(table, &receipt.object_uri, bytes.len())?],
+        table.metadata().default_partition_type(),
+        FormatVersion::V3,
+    )
+    .map_err(err)?;
+    Ok(receipt)
+}
+
+/// Verify the exact catalog-visible object and return its validated envelope.
+/// Managed worlds subsequently validate their ProgramInstance pin/interface.
+pub async fn load_bytes(
+    catalog: &dyn Catalog,
+    ident: &TableIdent,
+    receipt: &StagedCheckpoint,
+) -> Result<Vec<u8>> {
+    load_publication(catalog, ident, receipt)
+        .await
+        .map(|(_, bytes)| bytes)
+}
+
+/// Pinned snapshot identity together with the validated encoded checkpoint.
+pub async fn load_publication(
+    catalog: &dyn Catalog,
+    ident: &TableIdent,
+    receipt: &StagedCheckpoint,
+) -> Result<(i64, Vec<u8>)> {
+    let table = catalog.load_table(ident).await.map_err(err)?;
+    let snapshot = find_snapshot(&table, receipt)?.ok_or("Checkpoint not catalog-visible")?;
+    Ok((snapshot, read_checkpoint(&table, snapshot, receipt).await?))
 }
 
 fn find_snapshot(table: &Table, receipt: &StagedCheckpoint) -> Result<Option<i64>> {
