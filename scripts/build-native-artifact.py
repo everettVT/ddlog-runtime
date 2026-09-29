@@ -95,7 +95,9 @@ def executable(name, env):
     found = shutil.which(name, path=env.get('PATH'))
     if found is None:
         raise ValueError(f'Native build tool is unavailable: {name}')
-    return str(Path(found).resolve())
+    # Proxies such as rustup dispatch on the invoked basename. Preserve it for
+    # version queries; resolve symlinks only when recording the tool's path.
+    return str(Path(found).absolute())
 
 
 def input_roots(command, env, project):
@@ -111,8 +113,8 @@ def input_roots(command, env, project):
         if path.is_file():
             rustc = rustc or tomllib.loads(path.read_text()).get('build', {}).get('rustc')
     cargo, rustc = executable(command[0], env), executable(rustc or 'rustc', env)
-    versions = {'cargo_path': cargo, 'cargo': capture([cargo, '--version', '--verbose'], env),
-                'rustc_path': rustc, 'rustc': capture([rustc, '--version', '--verbose'], env),
+    versions = {'cargo_path': str(Path(cargo).resolve()), 'cargo': capture([cargo, '--version', '--verbose'], env),
+                'rustc_path': str(Path(rustc).resolve()), 'rustc': capture([rustc, '--version', '--verbose'], env),
                 'platform': sys.platform, 'machine': os.uname().machine}
     # Resolving the default Apple SDK is cheap; hashing its whole tree is not.
     if sys.platform == 'darwin':

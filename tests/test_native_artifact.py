@@ -46,6 +46,41 @@ class ArtifactOwnership(unittest.TestCase):
             self.assertEqual(versions['rustc_path'], str(root / 'fixture-rustc'))
             self.assertEqual(versions['rustc'], 'fixture-version')
 
+    def test_rustup_symlinks_query_selected_tools_and_separate_toolchain_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            project, binaries = root / 'project', root / 'bin'
+            project.mkdir()
+            binaries.mkdir()
+            proxy = binaries / 'rustup'
+            proxy.write_text('''#!/bin/sh
+case "$1 $2" in '--version --verbose') ;; *) exit 2 ;; esac
+case "${0##*/}" in
+    cargo|rustc) printf '%s fixture-%s\\n' "${0##*/}" "$RUSTUP_TOOLCHAIN" ;;
+    *) printf 'rustup fixture-manager\\n' ;;
+esac
+''')
+            proxy.chmod(0o755)
+            for name in ('cargo', 'rustc'):
+                (binaries / name).symlink_to(proxy)
+            for explicit in (False, True):
+                with self.subTest(explicit_tool_paths=explicit):
+                    cargo = str(binaries / 'cargo') if explicit else 'cargo'
+                    rustc = str(binaries / 'rustc') if explicit else 'rustc'
+                    command = [cargo, 'build', '--locked', '--offline']
+                    env = {'PATH': str(binaries), 'RUSTC': rustc,
+                           'CARGO_HOME': str(root / 'cargo-home')}
+                    keys = []
+                    for toolchain in ('1.94.1', '1.95.0'):
+                        env['RUSTUP_TOOLCHAIN'] = toolchain
+                        with patch.object(module.sys, 'platform', 'linux'):
+                            roots, versions = module.input_roots(command, env, project)
+                        for name in ('cargo', 'rustc'):
+                            self.assertEqual(versions[name], f'{name} fixture-{toolchain}')
+                            self.assertEqual(versions[name + '_path'], str(proxy))
+                        keys.append(module.fingerprint(roots, versions, command, env, ())[0])
+                    self.assertNotEqual(keys[0], keys[1])
+
     def test_key_covers_project_sources_lock_configuration_and_relevant_flags_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
