@@ -51,7 +51,22 @@ autostart. The operator chooses when to run this owner.
   gains synthesized **module groups** (below).
 - `start` takes `id`, records `starting`, then compiles/installs asynchronously.
   Poll `status`, `inspect`, or `inventory` to collect completion or failure.
-- `stop` takes `id`. It cancels managed compiler/native process groups. A pending
+- `checkpoint` takes `id` and returns an exact immutable managed JSON receipt after
+  durable publication. `restore` takes `id` and that `receipt` object and starts a
+  fresh generation asynchronously; ordinary Start never restores implicitly. See
+  the [managed checkpoint contract](managed-checkpoints.md) for receipt fields,
+  lifecycle gates, storage limits and failure/availability states.
+- With the optional Iceberg feature and startup `--storage-profile`,
+  `checkpoint_stage`, `checkpoint_publish`, and `checkpoint_status` expose
+  asynchronous local catalog publication. Restore accepts its exact published
+  receipt. See [managed local Iceberg](managed-iceberg.md); JSON admission
+  durability and Iceberg catalog visibility remain separately reported.
+- `worker_start`, `worker_status`, and `worker_stop` supervise trusted startup
+  profiles within this owner. `read_batch`, `admit_inputs`, and `admission_status`
+  provide consistent evidence and fenced durable input/effect boundaries. See the
+  [managed worker contract](managed-workers.md) for the exact version-1 schemas,
+  limits and explicit failure/replay semantics.
+- `stop` takes `id`. It cancels managed compiler/native/worker process groups. A pending
   install reports `stopping` until its completion is collected, then `stopped`.
 - `inventory` `{processor_id?, version?, summary?}` lists worlds, optionally filtered by
   pin. `summary: true` returns each status **without** `inspection`, `instance` and
@@ -59,7 +74,7 @@ autostart. The operator chooses when to run this owner.
 - `execute` takes world `id`, an inner `operation`, and inner `args`. Definition
   installation/registry mutations are rejected here; world definitions stay pinned.
   Beyond the existing program operations it offers:
-  - `instance_info` adds `revision`, `program_version`, `lowering_version` and `source_sha256` (sha256 of
+  - `instance_info` adds `revision`, `program_version`, `lowering_version`, `build` (runtime and activation-time native executable identity), and `source_sha256` (sha256 of
     the lowered `program.dl`) while the instance is healthy.
   - `apply_changes` adds `revision`.
   - `relations` `{}` → `{revision, relations: [{name, input, fields, count}]}` over the
@@ -118,8 +133,10 @@ resources, managed processes, instance info and inspection:
   library, its generated copy carries the `large-star`, `small-star` and
   `minimum-label` phase regions. That patch is applied to the generated project at build
   time; `src/star/lemmalog_star.rs` and the registry content hashes are unchanged by it.
-- `persistence`: `{status: "not_configured", reason: "world checkpoints are not wired"}`
-  in this slice; nothing claims durable world state.
+- `persistence`: managed JSON publication history, file availability, committed and
+  persisted revisions, and exact `restore_requested` / `restored_from` receipts.
+  Presence is labeled `present_unverified`; Restore verifies integrity and exact
+  pins before compilation. See [managed checkpoints](managed-checkpoints.md).
 - `test`: for test worlds, `{phase: building|applying|done|failed, scenario_index,
   results: [{name, passed, revision, expected, observed, missing, unexpected, error}],
   passed: bool|null, error}`, persisted in `world.json`. `expected`, `observed`,

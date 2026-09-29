@@ -1,5 +1,9 @@
 # Runtime-owned Iceberg checkpoints
 
+For managed worlds, startup configuration, asynchronous operations and exact
+public receipts, see [managed local Iceberg](managed-iceberg.md). This document
+describes the shared Backend/catalog engine beneath that integration.
+
 The optional `iceberg` feature stores the runtime's complete format-1 state in
 immutable Parquet and publishes it through an operator-provided Iceberg catalog.
 It requires Rust 1.95 and pins an Apache Iceberg git revision with Arrow/Parquet

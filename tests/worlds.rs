@@ -680,10 +680,9 @@ fn inventory_filters_by_pin_and_summary_skips_live_instance_calls() {
     for absent in ["inspection", "instance", "managed_processes"] {
         assert!(running.get(absent).is_none(), "{absent} present in summary");
     }
-    assert_eq!(
-        running["persistence"],
-        json!({"status":"not_configured","reason":"world checkpoints are not wired"})
-    );
+    assert_eq!(running["persistence"]["status"], "configured");
+    assert_eq!(running["persistence"]["checkpoints"], json!([]));
+    assert_eq!(running["persistence"]["persisted_revision"], Value::Null);
     assert_eq!(running["build"], Value::Null);
     assert_eq!(running["resources"]["state"], "available");
     let full = manager.status(&b).unwrap();
@@ -1115,6 +1114,9 @@ fn activity_is_tailed_rotation_keeps_topology_and_captures_are_retained_once() {
     append_capture(&f, &id, 1, &topology());
     let available = wait_until(&mut manager, &id, |s| {
         s["inspection"]["state"] == "available"
+            && s["inspection"]["activity"]["complete"] == true
+            && s["inspection"]["activity"]["totals"]["operators"] == 2
+            && s["inspection"]["activity"]["totals"]["channels"] == 1
     });
     assert_eq!(available["inspection"]["unresolved_channels"], 0);
     assert_eq!(available["inspection"]["activity"]["complete"], true);
@@ -1731,3 +1733,11 @@ fn composition_worlds_synthesize_module_groups_that_propagate_and_nest() {
         Value::Null
     );
 }
+
+#[path = "worlds/persistence.rs"]
+mod persistence;
+
+#[path = "worlds/admission.rs"]
+mod admission;
+#[path = "worlds/workers.rs"]
+mod workers;

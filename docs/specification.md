@@ -16,6 +16,8 @@ wire shapes and operational prerequisites.
 | Registered requests | Claim before completion; preserve late results with explicit freshness; identical completion is idempotent; conflicting completion fails; uncertain settlement never implies permission to repeat provider work | `tests/registered_requests.rs` |
 | Shared access | Connections share one owner; disconnect does not stop it; pinned versions and exported ports remain enforced | `tests/test_shared_host.py`, `tests/upstream_compatibility.rs` |
 | Checkpoints | Explicit pure-backend checkpoint; integrity-checked restore into a fresh backend; reconstruct outputs from acknowledged inputs | `tests/memory_runtime.rs`, [checkpoint contract](checkpoints.md) |
+| Managed persistence | Durable exact JSON receipts; explicit asynchronous fresh-generation restore with pinned public admission and hosted cancellation | `tests/worlds/persistence.rs`, `tests/worlds_stdio.rs`, opt-in `tests/worlds_native.rs`, [managed contract](managed-checkpoints.md) |
+| Managed workers and admission | Startup-only exact-pin profiles; owned bounded children; revision-fenced read batches and durable input admission; generic effect reservation/settlement with no replay authority | `tests/worlds/admission.rs`, `tests/worlds/workers.rs`, fake and opt-in native `tests/workers_socket.rs`, [worker contract](managed-workers.md) |
 | Compatibility | Preserve previously published definition hashes, native source fixtures, and MCP tool schemas unless a deliberate compatibility change is declared | `tests/upstream_compatibility.rs` |
 
 ## What an acknowledgment establishes

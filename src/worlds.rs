@@ -18,6 +18,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[path = "world_persistence.rs"]
+mod persistence;
+use persistence::{atomic_json, persist, persist_if_changed};
+#[path = "world_admission.rs"]
+mod admission;
+#[path = "world_storage.rs"]
+mod storage;
+#[path = "world_workers.rs"]
+mod workers;
+pub use admission::{AdmissionQuery, AdmitInputs, EffectRequest, ReadBatch, ReadQuery};
+pub use storage::{CheckpointPublish, CheckpointQuery, CheckpointStage};
+pub use workers::{WorkerQuery, WorkerStart, WorkerStop};
+#[path = "world_library.rs"]
+mod library;
+pub use library::{ArtifactEntry, ArtifactLibrary, LibraryArtifact, LibraryImportRequest};
+
 pub const SCHEMA_VERSION: u32 = 1;
 /// Implicit library holding every registered definition without an explicit one.
 pub const UNASSIGNED_LIBRARY: &str = "unassigned";
@@ -73,7 +89,11 @@ pub struct WorldDefinition {
 }
 /// Message from a start thread: a live instance, a completed test run whose
 /// instance was dropped, or the install/test failure.
-type StartOutcome = Result<Option<ProgramInstance>, String>;
+struct Started {
+    instance: ProgramInstance,
+    effects: admission::Effects,
+}
+type StartOutcome = Result<Option<Started>, String>;
 /// The capture tailer of one generation. `live` tells it whether an instance
 /// (or a pending start) still exists; without one it exits after idle polls.
 /// Dropping a tailer stops and joins its thread, so no thread outlives its
@@ -119,6 +139,14 @@ struct World {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     capture_generation: Option<u64>,
     history: Vec<Value>,
+    #[serde(default)]
+    persistence: persistence::Persistence,
+    #[serde(skip)]
+    persistence_dirty: bool,
+    #[serde(default)]
+    admission: admission::AdmissionState,
+    #[serde(default)]
+    workers: Vec<workers::Worker>,
     #[serde(skip)]
     pending: Option<std::sync::mpsc::Receiver<StartOutcome>>,
     #[serde(skip)]
@@ -187,6 +215,8 @@ pub struct WorldManager {
     build_root: PathBuf,
     driver: PathBuf,
     worlds: BTreeMap<String, World>,
+    worker_configuration: workers::Configuration,
+    storage_configuration: storage::Configuration,
     shutdown: WorldShutdown,
     _owner_lock: std::fs::File,
 }
@@ -237,6 +267,8 @@ impl WorldManager {
             ) {
                 return Err("Invalid persisted world state".into());
             }
+            workers::recover(&mut world);
+            admission::recover(&mut world);
             if matches!(world.state.as_str(), "starting" | "running" | "stopping") {
                 world.state = "interrupted".into();
                 world.error =
@@ -252,6 +284,7 @@ impl WorldManager {
                         .join("native-events.jsonl"),
                 ));
             }
+            persist_if_changed(&build_root, &id, &mut world)?;
             worlds.insert(id, world);
         }
         Ok(Self {
@@ -259,6 +292,8 @@ impl WorldManager {
             build_root,
             driver,
             worlds,
+            worker_configuration: workers::Configuration::default(),
+            storage_configuration: storage::Configuration::default(),
             _owner_lock: owner_lock,
             shutdown: WorldShutdown::default(),
         })
@@ -699,6 +734,10 @@ impl WorldManager {
                 reader: None,
                 capture_generation: None,
                 history: vec![],
+                persistence: persistence::Persistence::default(),
+                persistence_dirty: false,
+                admission: admission::AdmissionState::default(),
+                workers: Vec::new(),
                 pending: None,
                 stop_requested: false,
                 test: None,
@@ -760,7 +799,7 @@ impl WorldManager {
             purpose: "test".into(),
             scenarios,
         })?;
-        match self.start_with(&id, request.keep_world) {
+        match self.start_with(&id, request.keep_world, None) {
             Ok(status) => Ok(status),
             Err(error) => {
                 // A test world that never started is not inventory: the reply
@@ -810,9 +849,14 @@ impl WorldManager {
     /// Publish starting state before compiling; inventory and stop remain available.
     /// A restarted test world keeps its instance after re-running its scenarios.
     pub fn start_async(&mut self, id: &str) -> Result<Value, String> {
-        self.start_with(id, true)
+        self.start_with(id, true, None)
     }
-    fn start_with(&mut self, id: &str, keep_world: bool) -> Result<Value, String> {
+    fn start_with(
+        &mut self,
+        id: &str,
+        keep_world: bool,
+        restore: Option<persistence::Restore>,
+    ) -> Result<Value, String> {
         let registry = self.registry()?;
         let controls = self.shutdown.controls.clone();
         let mut controls = controls.lock().map_err(|_| "Shutdown lock poisoned")?;
@@ -821,6 +865,7 @@ impl WorldManager {
         if world.instance.is_some() || world.pending.is_some() {
             return Err("World already owns an instance; stop it before restarting".into());
         }
+        workers::shutdown(world);
         if let Some(mut tailer) = world.tailer.take() {
             tailer.stop();
         }
@@ -833,7 +878,12 @@ impl WorldManager {
         let metadata = self.world_metadata(&record)?;
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
         world.metadata = metadata;
-        world.generation += 1;
+        world.generation = world
+            .generation
+            .checked_add(1)
+            .ok_or("World generation exhausted")?;
+        world.persistence.restore_requested = restore.as_ref().map(|r| r.receipt.clone());
+        world.persistence.restored_from = None;
         world.stop_requested = false;
         let mut backend = Backend::new(
             self.build_root.join(id).join(world.generation.to_string()),
@@ -875,7 +925,7 @@ impl WorldManager {
             .map_err(|error| format!("Cannot select the world lowering: {error}"))?;
         world.state = "starting".into();
         world.error = None;
-        let scenarios = if world.definition.purpose == "test" {
+        let scenarios = if restore.is_none() && world.definition.purpose == "test" {
             world.definition.scenarios.clone()
         } else {
             Vec::new()
@@ -907,10 +957,15 @@ impl WorldManager {
         let (sender, receiver) = std::sync::mpsc::channel();
         world.pending = Some(receiver);
         std::thread::spawn(move || {
-            let installed = instance.execute(
-                "processor_install",
-                &json!({"processor_id":pin.processor_id,"version":pin.version}),
-            );
+            let installed = match restore {
+                Some(restore) => restore.install(&mut instance),
+                None => instance
+                    .execute(
+                        "processor_install",
+                        &json!({"processor_id":pin.processor_id,"version":pin.version}),
+                    )
+                    .map(|_| admission::Effects::default()),
+            };
             let result: StartOutcome = match (installed, progress) {
                 (Err(error), Some(progress)) => {
                     let mut status = progress.lock().unwrap();
@@ -920,11 +975,11 @@ impl WorldManager {
                     Err(error)
                 }
                 (Err(error), None) => Err(error),
-                (Ok(_), None) => Ok(Some(instance)),
-                (Ok(_), Some(progress)) => {
+                (Ok(effects), None) => Ok(Some(Started { instance, effects })),
+                (Ok(effects), Some(progress)) => {
                     run_scenarios(&mut instance, &scenarios, &progress);
                     if keep_world {
-                        Ok(Some(instance))
+                        Ok(Some(Started { instance, effects }))
                     } else {
                         drop(instance);
                         Ok(None)
@@ -937,7 +992,9 @@ impl WorldManager {
         self.status(id)
     }
     pub fn stop(&mut self, id: &str) -> Result<Value, String> {
+        self.storage_configuration.cancel(id);
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
+        workers::stop(world);
         if let Some(instance) = world.instance.take() {
             #[cfg(unix)]
             instance.backend.control.stop();
@@ -990,7 +1047,9 @@ impl WorldManager {
         self.status_with(id, false)
     }
     fn status_with(&mut self, id: &str, summary: bool) -> Result<Value, String> {
+        self.poll_storage();
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
+        workers::poll(world);
         let completion = world.pending.as_ref().map(|receiver| receiver.try_recv());
         match completion {
             Some(Ok(result)) => {
@@ -1000,8 +1059,11 @@ impl WorldManager {
                     world.state = "stopped".into();
                 } else {
                     match result {
-                        Ok(Some(instance)) => {
-                            world.instance = Some(instance);
+                        Ok(Some(started)) => {
+                            world.instance = Some(started.instance);
+                            world.admission.effects = started.effects;
+                            world.persistence.restored_from =
+                                world.persistence.restore_requested.clone();
                             world.state = "running".into();
                             world.error = None;
                         }
@@ -1098,10 +1160,19 @@ impl WorldManager {
             "state":world.state,"generation":world.generation,"error":world.error,"history":world.history,
             "owner":{"kind":"embedded","pid":std::process::id(),"memory_attribution":"shared_not_attributable"},
             "resources":sample_process(pid),"started_at_unix_ms":started_at,"build":build,"revision":revision,
-            "persistence":{"status":"not_configured","reason":"world checkpoints are not wired"},
+            "persistence":persistence::status(&self.build_root, id, world, &revision),
+            "workers":workers::statuses(world),
             "test":world.test});
+        if let Some(entries) = status["persistence"]["checkpoints"].as_array_mut() {
+            for entry in entries {
+                self.storage_configuration.observe_entry(entry);
+            }
+        }
+        status["persistence"]["iceberg"] = self
+            .storage_configuration
+            .status(world, &status["persistence"]);
         if !summary {
-            let processes = self.shutdown.controls.lock().map_err(|_|"Shutdown lock poisoned")?.get(id).map(|control|control.tracked_pids()).unwrap_or_default().into_iter().map(|process|json!({"role":if Some(process)==pid {"native"} else {"compiler_or_startup"},"sample":sample_process(Some(process)),"descendants_included":false})).collect::<Vec<_>>();
+            let processes = self.shutdown.controls.lock().map_err(|_|"Shutdown lock poisoned")?.get(id).map(|control|control.tracked_pids()).unwrap_or_default().into_iter().map(|process|json!({"role":if Some(process)==pid {"native"} else if workers::is_worker_pid(world, process) {"worker"} else {"compiler_or_startup"},"sample":sample_process(Some(process)),"descendants_included":false})).collect::<Vec<_>>();
             status["managed_processes"] = json!(processes);
             status["instance"] = instance_info;
             // A recovered world reads its last capture once; nothing tails it.
@@ -1444,6 +1515,7 @@ impl Drop for WorldManager {
     fn drop(&mut self) {
         self.shutdown.stop_all();
         for (id, world) in self.worlds.iter_mut() {
+            workers::shutdown(world);
             if let Some(instance) = world.instance.take() {
                 #[cfg(unix)]
                 instance.backend.control.stop();
@@ -1454,6 +1526,7 @@ impl Drop for WorldManager {
             if let Some(mut tailer) = world.tailer.take() {
                 tailer.stop();
             }
+            let _ = persist_if_changed(&self.build_root, id, world);
         }
     }
 }
@@ -1546,67 +1619,4 @@ fn lock_owner(root: &std::path::Path) -> Result<std::fs::File, String> {
         }
     }
     Ok(file)
-}
-fn persist_if_changed(root: &std::path::Path, id: &str, world: &mut World) -> Result<(), String> {
-    if world.history.last().is_none_or(|last| {
-        last["state"] != world.state
-            || last["generation"] != world.generation
-            || last["error"] != json!(world.error)
-    }) {
-        persist(root, id, world)?;
-    }
-    Ok(())
-}
-fn persist(root: &std::path::Path, id: &str, world: &mut World) -> Result<(), String> {
-    let mut history = world.history.clone();
-    if history.last().is_none_or(|last| {
-        last["state"] != world.state
-            || last["generation"] != world.generation
-            || last["error"] != json!(world.error)
-    }) {
-        history.push(json!({"at_unix_ms":timestamp(),"state":world.state,"generation":world.generation,"error":world.error}));
-    }
-    let path = root.join(id).join("world.json");
-    let temp = path.with_extension("json.tmp");
-    let mut record = serde_json::to_value(&*world).map_err(|e| e.to_string())?;
-    record["history"] = json!(history);
-    let bytes = serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    }
-    let mut file = options.open(&temp).map_err(|e| e.to_string())?;
-    use std::io::Write;
-    file.write_all(&bytes)
-        .and_then(|_| file.sync_all())
-        .map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, &path).map_err(|e| e.to_string())?;
-    std::fs::File::open(root.join(id))
-        .and_then(|f| f.sync_all())
-        .map_err(|e| e.to_string())?;
-    world.history = history;
-    Ok(())
-}
-
-fn atomic_json(path: &std::path::Path, value: &Value) -> Result<(), String> {
-    let temp = path.with_extension("json.tmp");
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).truncate(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    }
-    let mut file = options.open(&temp).map_err(|e| e.to_string())?;
-    use std::io::Write;
-    file.write_all(&serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?)
-        .and_then(|_| file.sync_all())
-        .map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, path).map_err(|e| e.to_string())?;
-    std::fs::File::open(path.parent().ok_or("Missing catalog parent")?)
-        .and_then(|file| file.sync_all())
-        .map_err(|e| e.to_string())
 }

@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-09-29T17:33:07.119043+00:00",
+  "status": "passed",
+  "artifacts": {
+    "ddlog-worlds": {
+      "path": "/private/tmp/hhmm-x0-20260929/ddlog-worlds-final-iceberg-mcp",
+      "sha256": "2d17fb1c2fd2dab8c8d4d491a63b5814a2c6ce127e00efb210f95313ff37b891"
+    },
+    "lemmalog-ddlog-mcp": {
+      "path": "/private/tmp/hhmm-x0-20260929/lemmalog-ddlog-mcp-final-iceberg-mcp",
+      "sha256": "7b3d7262400403c731395f29cd00e64c29ea06be84f27dd936e563389bda77e4"
+    },
+    "python_wheel": {
+      "path": "/private/tmp/hhmm-x0-20260929/runtime-final-wheels/ddlog_runtime_client-0.1.0-py3-none-any.whl",
+      "sha256": "5836777c90c7d5e2425b2624b98b02b05998acf20938fcef238661bb6b4ac0a5"
+    }
+  },
+  "host_rust": "1.95.0",
+  "features": [
+    "iceberg",
+    "mcp"
+  ],
+  "source_manifest_sha256": "4835780aad62825768d09e455d1ae5ba5c0546a167dabc74fb18e55e3ff44837",
+  "source_sha256": {
+    "Cargo.lock": "2bda58218dea4e637857109e1539ec19c6931ba36176ea737a2004d158ac2212",
+    "Cargo.toml": "e806ad15e0818f3980b72d184a5c67963db63c05973d07e1acb6528d649823c1",
+    "build.rs": "7e9d9d32a756c4b043dd1eb7327e64dfa5ce97305ac01e2f6abacd21a3be20b8",
+    "crates/syntax/Cargo.toml": "05c7b2ff343d68623a5277675919b0b66e2f82501b1a02e402187a78208a0695",
+    "crates/syntax/LICENSE": "212da0f1b3ebea42880b338390b99defc8a12a0ac45d0acf6a228280b2cc8652",
+    "crates/syntax/README.md": "ca4d494d844c69a7040a711294521904a5dced8d6dafae9d944d89cb89c642d0",
+    "crates/syntax/src/ast.rs": "3240d236916e46bf9ca4844ed7117631e04da4c035cbf69586c0cdf223d99230",
+    "crates/syntax/src/lib.rs": "e84c428ed4a119a2761ee3fd9542cf7e68808240b5c6718d690975c43e770791",
+    "crates/syntax/tests/parser.rs": "f261fcd74484891197952cf9fcca8edba13acd009251daf752dc8d8791a17cde",
+    "python/ddlog_runtime_client/__init__.py": "793a45625f2adc2e6f96dd34b50fd73cacbbf46e31a41956de7b875fbe80afff",
+    "python/ddlog_runtime_client/transport.py": "818e5d02e4ecbaec85c9789ea85e0a989c1d10bce94276bfcee0670298220b72",
+    "python/ddlog_runtime_client/world.py": "95bce83368c4da56948b213bdfc640935cb220bf8397a0ae0f9aba007a50f99d",
+    "python/pyproject.toml": "cbed701c86b2dfdd24eaaae3262fa40a65a4edc9ab57d9d6ffc30dbb20bb5980",
+    "src/bin/ddlog-worlds.rs": "a7b3a9f61001bd1ee59212deb997ee506dbf84f7109d37704e056b78fae29049",
+    "src/bin/lemmalog-ddlog-mcp.rs": "b711edfbe92b16f269bb1c2105aa703b08b760a623358dd00f24daea25005cd0",
+    "src/bin/worlds_socket/mod.rs": "e754b7aa7e6739d2d13fa99a75b2be4b12377f57d11e27fd2d24b5c4a5ef541b",
+    "src/bounded.rs": "2b98ca0c05e99e3644dffe32c6be17ae5fc4d3419f44a0e47c50e2e26cf25ace",
+    "src/checkpoint.rs": "4f05f81cf2ee596ef13042cd518826d4e162f66e33983103d2027cf53f064a3c",
+    "src/composition.rs": "b8459d8b9ffc1a787df51e7c57fb1a704e0cb40e49f639c2cf866652b3cdf6de",
+    "src/host.rs": "46b2fbac1e9c817bd3995772cddc7628e716629b928cc88391f614c9338772d7",
+    "src/iceberg_checkpoint.rs": "2568ea8623b5943ea6715e2a6e2107c766e073256182bdd2ec306bd1ac128ea3",
+    "src/inspection.rs": "b3961aed7f1b22b10315eaf3cd7d44c6fed318f3a4b4371374606b831049e7f0",
+    "src/instance.rs": "a9c2dd6ad061608e23bc62ca984ea42c6174e75585e8dba7a18f497768f2f835",
+    "src/lib.rs": "2b37bf482a72528403a95a1fc7b948f84cba18b8b2107e38b74737327a249b69",
+    "src/lower.rs": "5f3a76f2e98ef4566a4f19e66b15b9595f358040d83b035202bd1e6b9d547d57",
+    "src/mcp.rs": "94a5e97b5ea49b606966565baf1b7bbaf6bebeb8dc0a546994505bf95bebd477",
+    "src/operations.rs": "3956034ded42033a547c2544680b466053a1bf6d719af75eafb8f75e2a201463",
+    "src/processes.rs": "97fa41b7d31a5ccfadf1efb506776845c4926d4dd4f19adf2351480725ae206d",
+    "src/registry.rs": "88476cf0b01734b41c96e4680ad8c314346bb4e7ae37bc9003b56768284112b2",
+    "src/rows.rs": "643e6c72260d11106e83b5c6014eed5dc0f527233fa52c71bff97d7051151173",
+    "src/source_inspection.rs": "3503b293f64cc6a9c724c2b688222162bc8e2c3e486fa7e0e9d645ee80a60972",
+    "src/star/lemmalog_star.dl": "185d130ea9974275a58bfbc155eac7779f500f5c663e0f39d88383fa5d1c52cb",
+    "src/star/lemmalog_star.rs": "b6b434bcaea589bee1bb1204700634390d2c2b7909c9158653aeb0a8726f185e",
+    "src/star.rs": "5cd7088587428bc7018bd0253c8ce46d6c599feb99388394073572045c91f3e2",
+    "src/telemetry.rs": "b978a57af9aab1a939807a2987924ddff0c99b4ae945e8715751117e741ee694",
+    "src/world_admission.rs": "86490f4f5f9e7348789f9cae96abcebc1b85cc0e4bf1ee924011e287b7c69925",
+    "src/world_library.rs": "2d70e30d9ae6a2ac9f3f613b705741220ff612dd19957b65d9281ae3f6f7077e",
+    "src/world_persistence.rs": "9283e01a4184e31d0dec228edbbe0d06671cf013c447d85626f9f2b69fb31802",
+    "src/world_storage.rs": "02c073e77af6c331af0fe6b53f38a7986ff0df3c703f9bba06213257161d6e94",
+    "src/world_workers.rs": "c9111c1a66410ff11fa9a23c2b624b1c4ecbc150501425b9a8f5fbd0d881739e",
+    "src/worlds.rs": "efbdd17101e2183e8dfec58a15bac9e36dc3d5c82efb62be6d2cb2a44b6d8365"
+  },
+  "changes": [
+    "Retain only validated failed worker outcomes/codes on nonzero exit; never promote a nonzero exit to completed.",
+    "Hold registry writer exclusion across import destination validation, initial current-pointer selection and publication.",
+    "SDK validates correlated admission identity/state and bounded reads; authority requires a fresh durable reservation; timing callbacks cannot mask outcomes.",
+    "Correct asynchronous test signaling/capture predicates and update the packaging Cargo fixture to the artifact-report contract.",
+    "Remove obsolete managed-iceberg-next.md; managed-iceberg.md remains the current managed Iceberg contract."
+  ],
+  "review": {
+    "world_library.rs": "Reviewed exact-record/pin/provenance/scenario prevalidation, association ownership and replay semantics; no additional change needed.",
+    "registry.rs": "Concurrent import/current-pointer race fixed in shared import_plan.",
+    "python_sdk": "Admission projection/identity and advisory timing defects fixed; fresh installed wheel tested."
+  },
+  "validation": {
+    "fmt": "cargo +1.95.0 fmt --all -- --check: passed",
+    "clippy": "cargo +1.95.0 clippy --offline --workspace --all-features --all-targets -- -D warnings: passed",
+    "rust_workspace": {
+      "passed": 145,
+      "failed": 0,
+      "ignored": 8,
+      "log": "/private/tmp/hhmm-x0-20260929/runtime-final-rust-tests.log"
+    },
+    "python_runtime": {
+      "passed": 80,
+      "skipped": 1,
+      "log": "/private/tmp/hhmm-x0-20260929/runtime-final-python-tests.log"
+    },
+    "installed_python_client": {
+      "passed": 9,
+      "environment": "/private/tmp/hhmm-x0-20260929/runtime-final-client-venv"
+    },
+    "packaging": "Wheel and sdist built offline with pinned build backend; wheel installed and tested outside source checkout.",
+    "build": "cargo +1.95.0 build --offline --features iceberg,mcp --bins: passed",
+    "diff_check": "passed"
+  },
+  "native_evidence": {
+    "path": "docs/evidence/managed-iceberg-runtime.json",
+    "candidate_sha256": "10c832981c1a5a3fb150dccc04a9c57daa653bec34af086a31f4808b5772954a",
+    "scope": "Earlier isolated native composition proof has its own source manifest and candidate identity. Not relabeled as a native run of this final candidate; the final worker/registry/SDK pass uses workspace and subprocess regressions."
+  },
+  "boundaries": {
+    "provider_calls": 0,
+    "active_stores_accessed": false,
+    "existing_owners_modified": false,
+    "commits_created": 0,
+    "previous_candidate_replaced": false
+  }
+}

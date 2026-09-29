@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-09-29",
+  "scope": "Bounded managed JSON checkpoint and explicit asynchronous restore; local candidate only",
+  "status": "passed",
+  "host_rust": "1.94.1",
+  "native_ddlog": "1.2.3",
+  "native_rust": "1.65.0",
+  "source_sha256": {
+    "src/world_persistence.rs": "396fb90a987d1dad6f3cb344fd99e45f53a738d6093d6cc5ff9ed6eb850c2628",
+    "src/worlds.rs": "ffe00f120a8ec02751a2592b0b501d89582e8440a5a6fe2ae84a14a7aa23d266",
+    "src/instance.rs": "eaa68b6ba0865e01c7ad21b0236795268d7d29b489188964bc4e2178d8a749f9",
+    "src/checkpoint.rs": "4f05f81cf2ee596ef13042cd518826d4e162f66e33983103d2027cf53f064a3c",
+    "src/lib.rs": "2b37bf482a72528403a95a1fc7b948f84cba18b8b2107e38b74737327a249b69",
+    "src/bin/ddlog-worlds.rs": "fb11f63defe6175a8abd94f50a6996106263fc4dd864f418cebaeb5ecf48440d",
+    "tests/worlds/persistence.rs": "fca0082ba57d6559f32e7aa3f9b3ae55c79d547ce766eea6145b27381d220134",
+    "tests/worlds.rs": "65af9759a7a18e4178a826b293c910b217b8a708ad40d9982e05871b2be85556",
+    "tests/worlds_stdio.rs": "f166bdbf90909227a344fd0008718b8c468aed3a2595f5b8fb5b227860cfb8b0",
+    "tests/worlds_native.rs": "9ff364b1ecb4d86841db749e599c682b981f4937fe2edfabc3f6d1b17ae32d28",
+    "docs/managed-checkpoints.md": "dce90d2d25b1a514aca80c2b886dcf71a138a4e0fd21af812f53817e12f5958a",
+    "docs/worlds.md": "dddc22925d24113b35d352c95c6ade08ded317d7b67c64b58ebb604d06dbb967",
+    "docs/checkpoints.md": "bbb3729e22e99ae15734c2f5b93b48c6b40ff2f84c191b90cb8345789cace498",
+    "docs/specification.md": "b42a93070ff52b0553fb131cb5d2905e93b6a766103a09f55908f437e362a8b6"
+  },
+  "focused_tests": {
+    "passed": 72,
+    "ignored": 2,
+    "features": [
+      "mcp"
+    ],
+    "suites": [
+      "fixture_hashes",
+      "lowering_v2",
+      "memory_runtime",
+      "processor_composition_registry",
+      "registered_requests",
+      "upstream_compatibility",
+      "worlds",
+      "worlds_stdio"
+    ],
+    "note": "Focused suites passed; new tests and additive persistence schema stamp were checked again. The two ignored tests are separate lowering measurement/native gates."
+  },
+  "checks": [
+    "cargo fmt --all --check",
+    "cargo clippy --locked --offline --features mcp --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "native": {
+    "passed": 1,
+    "cases": 2,
+    "fresh_compilations": 6,
+    "mode": "fresh native compilation",
+    "test": "worlds_native::managed_json_restore_recomputes_public_state_and_preserves_process_capture",
+    "elapsed_seconds": 151.29,
+    "native_tested_world_persistence_sha256": "7c74b69f11c9263772fc585b12032685b402a74e289d407f9ce175b094b2bcca",
+    "subsequent_change": "Added schema_version:1 to status.persistence; verified by focused contract tests.",
+    "target": "/private/tmp/hhmm-x0-20260929/runtime-native-target",
+    "test_stores": "Created independently and removed after verification; retained receipts are test evidence, not available recovery objects.",
+    "evidence": [
+      {
+        "receipt": {
+          "checkpoint_sha256": "eb18df800b74497e56d696b26b8f67bd75af2dcfe0b4fe14725fff25ff64d0df",
+          "format": "json",
+          "origin": {
+            "build": {
+              "lowering_version": 2,
+              "native_sha256": "70dffc7fe6e97473d0a94d834ec44d2eef4edd1e7372608598298cf0454676d9",
+              "program_version": 1,
+              "runtime": {
+                "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                "crate_version": "0.1.0",
+                "dirty": true,
+                "schema_version": 1
+              },
+              "source_sha256": "bb4fd2460e4999911802b5dd9b3f8e258f0931e59f9a32cacb8b7bbd4bf765f2"
+            },
+            "generation": 1,
+            "program_version": 1,
+            "revision": 2,
+            "world_id": "42702-1790698922324295000-0"
+          },
+          "program": {
+            "dependencies": {},
+            "lowering_version": 2,
+            "processor": {
+              "processor_id": "processor_96e29a44ed01861aaaaec6ae8e7b0a61",
+              "version": "sha256:8764140061b44b98a2cd166e54f0eb044ea40f118e29ba7d43bbd019b6b4bbc6"
+            },
+            "public_relations": [
+              {
+                "fields": [
+                  "int",
+                  "int"
+                ],
+                "input": true,
+                "name": "edge",
+                "physical": "edge"
+              },
+              {
+                "fields": [
+                  "string"
+                ],
+                "input": true,
+                "name": "unused",
+                "physical": "unused"
+              },
+              {
+                "fields": [
+                  "int",
+                  "int"
+                ],
+                "input": false,
+                "name": "reach",
+                "physical": "reach"
+              }
+            ],
+            "source_sha256": "bb4fd2460e4999911802b5dd9b3f8e258f0931e59f9a32cacb8b7bbd4bf765f2"
+          },
+          "published_at_unix_ms": 1790698958040,
+          "receipt_id": "42702-1790698958006424000-2",
+          "schema_version": 1
+        },
+        "restored_build": {
+          "lowering_version": 2,
+          "native_sha256": "317123e6da3aa41179292884cd49e85b1070abf9580f54dd8b71be2f9d212f59",
+          "program_version": 1,
+          "runtime": {
+            "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+            "crate_version": "0.1.0",
+            "dirty": true,
+            "schema_version": 1
+          },
+          "source_sha256": "bb4fd2460e4999911802b5dd9b3f8e258f0931e59f9a32cacb8b7bbd4bf765f2"
+        },
+        "restored_revision": 2,
+        "rows_before": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "rows_after": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            5
+          ],
+          [
+            2,
+            5
+          ]
+        ],
+        "capture_state": "available"
+      },
+      {
+        "receipt": {
+          "checkpoint_sha256": "922ba5c2a81b320d4305f01115e6bd83a1edf1609751e2151250aff202883c16",
+          "format": "json",
+          "origin": {
+            "build": {
+              "lowering_version": 2,
+              "native_sha256": "f256189a253d7fc61f742d7cf970c709c8f69efa457df19704bb7674189f64b0",
+              "program_version": 1,
+              "runtime": {
+                "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+                "crate_version": "0.1.0",
+                "dirty": true,
+                "schema_version": 1
+              },
+              "source_sha256": "b4852749ed9edce76f738a56c72bdf5ff5fa06dae5472130edb1f404ff69953c"
+            },
+            "generation": 1,
+            "program_version": 1,
+            "revision": 2,
+            "world_id": "42702-1790699009397731000-5"
+          },
+          "program": {
+            "dependencies": {
+              "graph": {
+                "processor_id": "processor_96e29a44ed01861aaaaec6ae8e7b0a61",
+                "version": "sha256:8764140061b44b98a2cd166e54f0eb044ea40f118e29ba7d43bbd019b6b4bbc6"
+              }
+            },
+            "lowering_version": 2,
+            "processor": {
+              "processor_id": "processor_d927730652b60ab47b40e822cc434269",
+              "version": "sha256:bcced04e2efad1746a10fffae73c8a61a507f6dcf4570da88e06b83d200317a1"
+            },
+            "public_relations": [
+              {
+                "fields": [
+                  "int",
+                  "int"
+                ],
+                "input": true,
+                "name": "edge",
+                "physical": "Input_edge"
+              },
+              {
+                "fields": [
+                  "string"
+                ],
+                "input": true,
+                "name": "unused",
+                "physical": "Input_unused"
+              },
+              {
+                "fields": [
+                  "int",
+                  "int"
+                ],
+                "input": false,
+                "name": "reach",
+                "physical": "Output_reach"
+              }
+            ],
+            "source_sha256": "b4852749ed9edce76f738a56c72bdf5ff5fa06dae5472130edb1f404ff69953c"
+          },
+          "published_at_unix_ms": 1790699030561,
+          "receipt_id": "42702-1790699030514400000-7",
+          "schema_version": 1
+        },
+        "restored_build": {
+          "lowering_version": 2,
+          "native_sha256": "ebfa45bb67c623d2ac3ca6c2dfdc2364e9c1206ef715140c5906024924404284",
+          "program_version": 1,
+          "runtime": {
+            "commit": "1f9f417824bac951d7fa644bba63b082759f94d6",
+            "crate_version": "0.1.0",
+            "dirty": true,
+            "schema_version": 1
+          },
+          "source_sha256": "b4852749ed9edce76f738a56c72bdf5ff5fa06dae5472130edb1f404ff69953c"
+        },
+        "restored_revision": 2,
+        "rows_before": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "rows_after": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            5
+          ],
+          [
+            2,
+            5
+          ]
+        ],
+        "capture_state": "available"
+      }
+    ]
+  },
+  "provider_calls": 0,
+  "active_store_access": false,
+  "owner_replacement": false,
+  "commits_or_publication": false,
+  "integration_limits": [
+    "HHMM/X0 application acceptance remains an integration gate; native tests here use a pure reachability program and a composition.",
+    "No worker supervisor, durable effect claims, record importer or Iceberg catalog configuration was added.",
+    "Build drivers execute concurrently across worlds. Shared native Cargo target program_cli copy can race; use per-project targets or serialize complete driver calls.",
+    "Checkpoint capture/publication is synchronous with a 64 MiB JSON bound. Restore compilation/replay is asynchronous.",
+    "Receipt availability is presence/type/size only until explicit restore validates integrity and pins."
+  ]
+}

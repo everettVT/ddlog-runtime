@@ -854,9 +854,115 @@ impl ProcessorRegistry {
         for id in roots {
             plan.load_processor(self, &id, &mut Vec::new())?;
         }
+        self.import_plan(plan, dry_run)
+    }
+
+    /// Import a saved collection of exact records without a source registry.
+    /// Supplied order selects the initial current version of a new processor:
+    /// its first record wins, just as with repeated `import_version` calls.
+    /// Existing current pointers never move. All records and their transitive
+    /// dependency closure are validated before publication; writes use the
+    /// same immutable publication path as directory imports.
+    pub fn import_records(
+        &self,
+        records: Vec<ProcessorVersion>,
+        dry_run: bool,
+    ) -> Result<ImportReport> {
+        if records.is_empty() || records.len() > 4096 {
+            return Err("Import requires between 1 and 4096 exact records".into());
+        }
+        let mut plan = ImportPlan {
+            source: PathBuf::new(),
+            processors: BTreeMap::new(),
+            order: Vec::new(),
+            report: ImportReport::default(),
+        };
+        for record in records {
+            verify_envelope(&record, &record.processor_id, &record.version)?;
+            let source = plan
+                .processors
+                .entry(record.processor_id.clone())
+                .or_insert_with(|| SourceProcessor {
+                    current: Current {
+                        format_version: FORMAT_VERSION,
+                        processor_id: record.processor_id.clone(),
+                        version: record.version.clone(),
+                        lineage: record.lineage.clone(),
+                    },
+                    records: BTreeMap::new(),
+                });
+            if source
+                .records
+                .insert(record.version.clone(), record)
+                .is_some()
+            {
+                return Err("Duplicate processor/version in record import".into());
+            }
+        }
+        fn visit(
+            plan: &mut ImportPlan,
+            key: (String, String),
+            stack: &mut Vec<(String, String)>,
+        ) -> Result<()> {
+            if plan.order.contains(&key) {
+                return Ok(());
+            }
+            if stack.contains(&key) || stack.len() >= 128 {
+                return Err("Cyclic or excessively nested record import".into());
+            }
+            let Some(record) = plan
+                .processors
+                .get(&key.0)
+                .and_then(|p| p.records.get(&key.1))
+            else {
+                // An omitted dependency must exist at the destination; the
+                // shared validator below checks it and its full closure.
+                return Ok(());
+            };
+            let children = match &record.definition {
+                ProcessorDefinition::Program(_) => Vec::new(),
+                ProcessorDefinition::Composition(definition) => definition
+                    .composition
+                    .nodes
+                    .values()
+                    .map(|pin| (pin.processor_id.clone(), pin.version.clone()))
+                    .collect(),
+            };
+            stack.push(key.clone());
+            for child in children {
+                visit(plan, child, stack)?;
+            }
+            stack.pop();
+            plan.order.push(key);
+            Ok(())
+        }
+        let keys: Vec<_> = plan
+            .processors
+            .iter()
+            .flat_map(|(id, p)| {
+                p.records
+                    .keys()
+                    .map(move |version| (id.clone(), version.clone()))
+            })
+            .collect();
+        for key in keys {
+            visit(&mut plan, key, &mut Vec::new())?;
+        }
+        self.import_plan(plan, dry_run)
+    }
+
+    fn import_plan(&self, mut plan: ImportPlan, dry_run: bool) -> Result<ImportReport> {
         if !plan.report.errors.is_empty() {
             return Ok(plan.report);
         }
+        // Keep destination validation and current-pointer selection in the same
+        // writer exclusion interval as publication. Otherwise another importer
+        // can create a current pointer after we classified it as absent.
+        let _lock = if dry_run {
+            None
+        } else {
+            Some(UpdateLock::acquire(&self.root)?)
+        };
         let reader = |reference: &ProcessorReference| -> Result<ProcessorVersion> {
             match plan
                 .processors
@@ -919,7 +1025,6 @@ impl ProcessorRegistry {
             }
             return Ok(plan.report);
         }
-        let lock = UpdateLock::acquire(&self.root)?;
         for (processor_id, version) in &plan.order {
             let source = &plan.processors[processor_id];
             let record = &source.records[version];
@@ -954,7 +1059,6 @@ impl ProcessorRegistry {
                 true,
             )?;
         }
-        drop(lock);
         Ok(plan.report)
     }
 

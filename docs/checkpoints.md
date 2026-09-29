@@ -59,3 +59,10 @@ restored source before exposing product operations.
 For a composition, the caller can include its manifest and returned resolution
 in that metadata. Checkpoints retain the installed source and inputs, but do not
 implicitly retain registry records or reconstruct a composition resolution.
+
+Managed worlds expose this same JSON format through explicit receipt-based
+Checkpoint/Restore operations. They bind registry/dependency pins, public admission,
+origin execution and actual lowering automatically, and rebuild that admission
+state before activating restoration. See [managed checkpoints](managed-checkpoints.md).
+Backend restore retains its caller's hosted process control, capture path and
+observer options while constructing the fresh candidate.

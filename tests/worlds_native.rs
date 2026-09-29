@@ -336,3 +336,182 @@ fn registered_worlds_expose_native_graph_and_metadata_then_stop() {
     drop(recovered);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+#[ignore = "requires DDLOG_RUNTIME_NATIVE_BUILD and its operator-configured native toolchain"]
+fn managed_json_restore_recomputes_public_state_and_preserves_process_capture() {
+    let root = std::env::temp_dir().join(format!(
+        "world-checkpoint-native-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let driver: std::path::PathBuf = std::env::var_os("DDLOG_RUNTIME_NATIVE_BUILD")
+        .expect("Configure native build driver")
+        .into();
+    let mut manager =
+        WorldManager::new(root.join("registry"), root.join("worlds"), driver.clone()).unwrap();
+    let leaf = manager
+        .registry()
+        .unwrap()
+        .create(
+            serde_json::from_value(json!({
+                "rules":"reach(X,Y) :- edge(X,Y). reach(X,Z) :- reach(X,Y), edge(Y,Z).",
+                "schemas":{
+                    "edge":{"input":true,"fields":["int","int"]},
+                    "unused":{"input":true,"fields":["string"]},
+                    "reach":{"input":false,"fields":["int","int"]}},
+                "interface":{"inputs":["edge","unused"],"outputs":["reach"]}
+            }))
+            .unwrap(),
+            None,
+        )
+        .unwrap();
+    let composed = manager.registry().unwrap().create(serde_json::from_value(json!({"composition":{
+        "nodes":{"graph":{"processor_id":leaf.processor_id,"version":leaf.version}},
+        "inputs":{
+            "edge":{"fields":["int","int"],"targets":[{"node":"graph","relation":"edge"}]},
+            "unused":{"fields":["string"],"targets":[{"node":"graph","relation":"unused"}]}},
+        "bindings":[],"outputs":{"reach":{"node":"graph","relation":"reach"}}}
+    })).unwrap(),None).unwrap();
+    let mut evidence = Vec::new();
+    for record in [leaf, composed] {
+        let id = manager
+            .create(world(
+                "Native managed recovery",
+                &serde_json::to_value(&record).unwrap(),
+            ))
+            .unwrap();
+        let start = manager.start(&id).unwrap();
+        let original_pid = start["resources"]["pid"].as_u64().unwrap() as i32;
+        manager
+            .execute(
+                &id,
+                "apply_changes",
+                &json!({"changes":[
+            {"op":"insert","predicate":"edge","values":[1,2]},
+            {"op":"insert","predicate":"edge","values":[2,3]}]}),
+            )
+            .unwrap();
+        let expected = manager
+            .execute(&id, "query_rows", &json!({"predicate":"reach"}))
+            .unwrap()["rows"]
+            .clone();
+        assert_eq!(expected.as_array().unwrap().len(), 3);
+        let receipt = manager.checkpoint(&id).unwrap();
+        manager
+            .execute(
+                &id,
+                "apply_changes",
+                &json!({"changes":[{"op":"insert","predicate":"edge","values":[3,4]}]}),
+            )
+            .unwrap();
+        assert_eq!(
+            manager
+                .execute(&id, "query_rows", &json!({"predicate":"reach"}))
+                .unwrap()["total"],
+            6
+        );
+        manager.stop(&id).unwrap();
+        assert_eq!(unsafe { libc::kill(original_pid, 0) }, -1);
+        drop(manager);
+        manager =
+            WorldManager::new(root.join("registry"), root.join("worlds"), driver.clone()).unwrap();
+        assert_eq!(
+            manager.status(&id).unwrap()["persistence"]["checkpoints"][0]["receipt"],
+            receipt
+        );
+        let admission = manager.restore_async(&id, &receipt).unwrap();
+        assert_eq!(admission["state"], "starting");
+        let restored = wait_until(&mut manager, &id, "restored native instance", |s| {
+            s["state"] != "starting"
+        });
+        assert_eq!(restored["state"], "running", "{restored}");
+        assert_eq!(restored["generation"], 2);
+        assert_eq!(restored["revision"], 2);
+        assert_eq!(restored["persistence"]["restored_from"], receipt);
+        assert_eq!(
+            restored["instance"]["source_sha256"],
+            receipt["program"]["source_sha256"]
+        );
+        let pid = restored["resources"]["pid"].as_u64().unwrap() as i32;
+        assert_ne!(pid, original_pid);
+        assert_eq!(unsafe { libc::getpgid(pid) }, pid);
+        assert_eq!(restored["managed_processes"][0]["role"], "native");
+        assert_eq!(
+            manager
+                .execute(&id, "query_rows", &json!({"predicate":"reach"}))
+                .unwrap()["rows"],
+            expected
+        );
+        assert_eq!(
+            manager
+                .execute(&id, "query_rows", &json!({"predicate":"unused"}))
+                .unwrap()["rows"],
+            json!([])
+        );
+        assert!(manager
+            .execute(&id, "query_rows", &json!({"predicate":"Module0_reach"}))
+            .is_err());
+        manager
+            .execute(
+                &id,
+                "apply_changes",
+                &json!({"changes":[
+            {"op":"delete","predicate":"edge","values":[2,3]},
+            {"op":"insert","predicate":"edge","values":[2,5]}]}),
+            )
+            .unwrap();
+        let mut after = manager
+            .execute(&id, "query_rows", &json!({"predicate":"reach"}))
+            .unwrap()["rows"]
+            .as_array()
+            .unwrap()
+            .clone();
+        after.sort_by_key(Value::to_string);
+        assert_eq!(
+            after,
+            json!([[1, 2], [1, 5], [2, 5]]).as_array().unwrap().clone()
+        );
+        let captured = wait_until(&mut manager, &id, "restored generation capture", |s| {
+            s["inspection"]["state"] == "available"
+                && s["inspection"]["activity"]["totals"]["timely"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    > 0
+        });
+        assert!(root
+            .join("worlds")
+            .join(&id)
+            .join("2/native-events.jsonl")
+            .is_file());
+        evidence.push(json!({"receipt":receipt,"restored_instance":restored["instance"],
+            "rows_before":expected,"rows_after":after,"capture_state":captured["inspection"]["state"],
+            "provider_calls":0}));
+        manager.stop(&id).unwrap();
+        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        let fresh = manager.start(&id).unwrap();
+        assert_eq!(fresh["revision"], 1);
+        assert_eq!(fresh["persistence"]["restored_from"], Value::Null);
+        assert_eq!(
+            manager
+                .execute(&id, "query_rows", &json!({"predicate":"reach"}))
+                .unwrap()["rows"],
+            json!([])
+        );
+        manager.stop(&id).unwrap();
+    }
+    drop(manager);
+    if let Some(path) = std::env::var_os("DDLOG_RUNTIME_NATIVE_EVIDENCE") {
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&json!({"mode":"fresh native compilation","cases":evidence}))
+                .unwrap(),
+        )
+        .unwrap();
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}

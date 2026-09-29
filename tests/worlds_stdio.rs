@@ -162,7 +162,8 @@ fn stdio_protocol_covers_every_control_plane_verb() {
     let created = owner.call("create", json!({"label":"Echo world","processor":pin}));
     let id = created["id"].as_str().unwrap().to_string();
     assert_eq!(created["state"], "created");
-    assert_eq!(created["persistence"]["status"], "not_configured");
+    assert_eq!(created["persistence"]["schema_version"], 1);
+    assert_eq!(created["persistence"]["status"], "configured");
     assert_eq!(owner.call("start", json!({"id":id}))["state"], "starting");
     let running = owner.wait(&id);
     assert_eq!(running["state"], "running");
@@ -244,4 +245,41 @@ fn stdio_protocol_covers_every_control_plane_verb() {
     drop(owner.input.take());
     let status = owner.child.wait().unwrap();
     assert!(status.success());
+}
+
+#[test]
+fn checkpoint_and_explicit_restore_protocol_preserves_receipt_and_revision() {
+    let mut owner = Owner::spawn();
+    let record = owner.call(
+        "register",
+        json!({"name":"Checkpoint echo", "definition":{
+        "rules":"echo(N,S) :- source(N,S).", "schemas":{
+            "source":{"input":true,"fields":["int","string"]},
+            "echo":{"input":false,"fields":["int","string"]}}}}),
+    );
+    let created = owner.call("create",json!({"label":"restore", "processor":{"processor_id":record["processor_id"],"version":record["version"]}}));
+    let id = created["id"].as_str().unwrap();
+    owner.call("start", json!({"id":id}));
+    assert_eq!(owner.wait(id)["state"], "running");
+    owner.call("execute",json!({"id":id,"operation":"apply_changes","args":{"changes":[{"op":"insert","predicate":"source","values":[1,"saved"]}]}}));
+    let receipt = owner.call("checkpoint", json!({"id":id}));
+    assert_eq!(receipt["origin"]["revision"], 2);
+    assert!(!owner
+        .fail("restore", json!({"id":id,"receipt":receipt}))
+        .is_empty());
+    owner.call("stop", json!({"id":id}));
+    owner.call("restore", json!({"id":id,"receipt":receipt}));
+    let status = owner.wait(id);
+    assert_eq!(status["state"], "running");
+    assert_eq!(status["generation"], 2);
+    assert_eq!(status["revision"], 2);
+    assert_eq!(status["persistence"]["restored_from"], receipt);
+    assert_eq!(
+        owner.call(
+            "execute",
+            json!({"id":id,"operation":"query_rows","args":{"predicate":"echo"}})
+        )["rows"],
+        json!([[1, "saved"]])
+    );
+    owner.call("stop", json!({"id":id}));
 }
