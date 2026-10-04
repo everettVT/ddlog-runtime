@@ -18,6 +18,7 @@ wire shapes and operational prerequisites.
 | Checkpoints | Explicit pure-backend checkpoint; integrity-checked restore into a fresh backend; reconstruct outputs from acknowledged inputs | `tests/memory_runtime.rs`, [checkpoint contract](checkpoints.md) |
 | Managed persistence | Durable exact JSON receipts; explicit asynchronous fresh-generation restore with pinned public admission and hosted cancellation | `tests/worlds/persistence.rs`, `tests/worlds_stdio.rs`, opt-in `tests/worlds_native.rs`, [managed contract](managed-checkpoints.md) |
 | Managed workers and admission | Startup-only exact-pin profiles; owned bounded children; revision-fenced read batches and durable input admission; generic effect reservation/settlement with no replay authority | `tests/worlds/admission.rs`, `tests/worlds/workers.rs`, fake and opt-in native `tests/workers_socket.rs`, [worker contract](managed-workers.md) |
+| External publication (opt-in Rust port) | Retained admission barrier, asynchronous complete output/checkpoint freeze, exact external acknowledgement and bound import; no input replay or competing owner | `tests/worlds/boundary.rs`, opt-in `tests/worlds_native.rs`, [external publication](external-publication.md) |
 | Compatibility | Preserve previously published definition hashes, native source fixtures, and MCP tool schemas unless a deliberate compatibility change is declared | `tests/upstream_compatibility.rs` |
 
 ## What an acknowledgment establishes

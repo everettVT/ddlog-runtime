@@ -31,6 +31,7 @@ fn world(label: &str, record: &Value) -> WorldDefinition {
             processor_id: record["processor_id"].as_str().unwrap().into(),
             version: record["version"].as_str().unwrap().into(),
         },
+        external_publication: None,
         purpose: "instance".into(),
         scenarios: vec![],
     }
@@ -57,6 +58,7 @@ fn registered_worlds_expose_native_graph_and_metadata_then_stop() {
                 processor_id: first.processor_id.clone(),
                 version: first.version.clone(),
             },
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })
@@ -201,6 +203,7 @@ fn registered_worlds_expose_native_graph_and_metadata_then_stop() {
                 processor_id: second.processor_id,
                 version: second.version,
             },
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })
@@ -514,4 +517,140 @@ fn managed_json_restore_recomputes_public_state_and_preserves_process_capture() 
         .unwrap();
     }
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires DDLOG_RUNTIME_NATIVE_BUILD and its operator-configured native toolchain"]
+fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
+    use ddlog_runtime::worlds::{
+        BoundaryKey, ExternalPublicationPolicy, ExternalReceipt, FrozenManifest,
+    };
+    use sha2::{Digest, Sha256};
+    let digest = |v: &Value| format!("{:x}", Sha256::digest(serde_json::to_vec(v).unwrap()));
+    let root = std::env::temp_dir().join(format!(
+        "external-cut-native-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let driver =
+        std::env::var_os("DDLOG_RUNTIME_NATIVE_BUILD").expect("Configure native build driver");
+    let mut m =
+        WorldManager::new(root.join("registry"), root.join("worlds"), driver.into()).unwrap();
+    let record=m.registry().unwrap().create(serde_json::from_value(json!({
+        "rules":"reach(X,Y) :- edge(X,Y). reach(X,Z) :- reach(X,Y), edge(Y,Z).",
+        "schemas":{"edge":{"input":true,"fields":["int","int"]},"reach":{"input":false,"fields":["int","int"]}}
+    })).unwrap(),None).unwrap();
+    let mut definition = world("Native external cut", &json!(record));
+    definition.external_publication = Some(ExternalPublicationPolicy {
+        namespace: "archetype".into(),
+        outputs: vec!["reach".into()],
+        max_rows: 1000,
+        max_bytes: 1024 * 1024,
+    });
+    let id = m.create(definition).unwrap();
+    m.start(&id).unwrap();
+    let apply = |m: &mut WorldManager,
+                 generation: u64,
+                 revision: u64,
+                 key: &str,
+                 parent: Option<&str>,
+                 changes: Value| {
+        let result=m.admit_boundary_async(serde_json::from_value(json!({"admission":{"id":id,"expected_generation":generation,
+            "expected_revision":revision,"admission_key":key,"changes":changes},"binding":{"context":{"world":"ecs","run":"run-a","tick":revision},"parent_receipt_sha256":parent}})).unwrap()).unwrap();
+        let key: BoundaryKey = serde_json::from_value(result["boundary"]["key"].clone()).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let status = m
+                .admission_status(
+                    serde_json::from_value(
+                        json!({"id":id,"generation":generation,"admission_key":key.admission_key}),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            if status["state"] != "pending" {
+                assert_eq!(status["state"], "frozen", "{status}");
+                return (key, status);
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+    let (key, frozen) = apply(
+        &mut m,
+        1,
+        1,
+        "first",
+        None,
+        json!([
+        {"op":"insert","predicate":"edge","values":[1,2]}, {"op":"insert","predicate":"edge","values":[2,3]}]),
+    );
+    let manifest: FrozenManifest =
+        serde_json::from_value(frozen["boundary"]["manifest"].clone()).unwrap();
+    assert_eq!(manifest.outputs[0].rows, 3);
+    let fetch = |m: &mut WorldManager, key: &BoundaryKey, sha: &str| {
+        let page = m
+            .read_boundary_blob(
+                serde_json::from_value(
+                    json!({"key":key,"blob_sha256":sha,"offset":0,"max_bytes":4*1024*1024}),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert!(page.next_offset.is_none());
+        page.bytes
+    };
+    let rows: Value =
+        serde_json::from_slice(&fetch(&mut m, &key, &manifest.outputs[0].blob.sha256)).unwrap();
+    assert!(rows.as_array().unwrap().contains(&json!([1, 3])));
+    let checkpoint = fetch(&mut m, &key, &manifest.checkpoint.sha256);
+    m.stop(&id).unwrap();
+    let body = json!({"cut":"host-cut-1"});
+    let frozen_manifest_sha256 = digest(&json!(manifest));
+    let ack = ExternalReceipt {
+        receipt_sha256: digest(
+            &json!({"frozen_manifest_sha256":frozen_manifest_sha256,"receipt":body}),
+        ),
+        frozen_manifest_sha256,
+        receipt: body,
+    };
+    m.confirm_boundary_published(key, ack.clone()).unwrap();
+    drop(m);
+    let driver = std::env::var_os("DDLOG_RUNTIME_NATIVE_BUILD").unwrap();
+    let mut m =
+        WorldManager::new(root.join("registry"), root.join("worlds"), driver.into()).unwrap();
+    m.restore_boundary_async(
+        serde_json::from_value(json!({"target_world_id":id,"expected_generation":1,
+        "manifest":manifest,"checkpoint_bytes":checkpoint,"published":ack}))
+        .unwrap(),
+    )
+    .unwrap();
+    let live = wait_until(&mut m, &id, "bound checkpoint restore", |s| {
+        s["state"] != "starting"
+    });
+    assert_eq!(live["state"], "running", "{live}");
+    assert_eq!(
+        live["persistence"]["restored_from"]["origin"]["generation"],
+        1
+    );
+    assert!(live["instance"]["build"]["native_sha256"].is_string());
+    let (_, empty) = apply(
+        &mut m,
+        2,
+        2,
+        "retract",
+        Some(&ack.receipt_sha256),
+        json!([
+        {"op":"delete","predicate":"edge","values":[1,2]}, {"op":"delete","predicate":"edge","values":[2,3]}]),
+    );
+    assert_eq!(empty["boundary"]["manifest"]["outputs"][0]["rows"], 0);
+    drop(m);
+    eprintln!(
+        "native external-cut evidence retained at {}",
+        root.display()
+    );
 }

@@ -56,6 +56,7 @@ fn definition(manager: &WorldManager) -> WorldDefinition {
             processor_id: record.processor_id,
             version: record.version,
         },
+        external_publication: None,
         purpose: "instance".into(),
         scenarios: vec![],
     }
@@ -80,6 +81,7 @@ fn named(manager: &WorldManager, name: &str) -> WorldDefinition {
             processor_id: record["processor_id"].as_str().unwrap().into(),
             version: record["version"].as_str().unwrap().into(),
         },
+        external_publication: None,
         purpose: "instance".into(),
         scenarios: vec![],
     }
@@ -1416,6 +1418,7 @@ fn with_groups(manager: &WorldManager, groups: Value) -> WorldDefinition {
             processor_id: record["processor_id"].as_str().unwrap().into(),
             version: record["version"].as_str().unwrap().into(),
         },
+        external_publication: None,
         purpose: "instance".into(),
         scenarios: vec![],
     }
@@ -1477,6 +1480,7 @@ fn nested_composition(
                 processor_id: outer["processor_id"].as_str().unwrap().into(),
                 version: outer["version"].as_str().unwrap().into(),
             },
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         },
@@ -1741,3 +1745,6 @@ mod persistence;
 mod admission;
 #[path = "worlds/workers.rs"]
 mod workers;
+
+#[path = "worlds/boundary.rs"]
+mod boundary;

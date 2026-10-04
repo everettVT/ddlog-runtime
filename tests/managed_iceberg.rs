@@ -116,6 +116,7 @@ fn make(manager: &mut WorldManager, composition: bool) -> String {
         .create(WorldDefinition {
             label: "Iceberg recovery".into(),
             processor: pin,
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })
@@ -458,6 +459,7 @@ fn storage_deadline_and_stop_preserve_responsiveness_and_exact_retry() {
             label: "Pending publication restore".into(),
             processor: serde_json::from_value(published["receipt"]["program"]["processor"].clone())
                 .unwrap(),
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 control = Path(__CONTROL__)
 source = Path(__file__).with_name("program.dl").read_text()
@@ -26,6 +27,10 @@ for raw in sys.stdin:
         (relation.add if operation == "insert" else relation.discard)(value)
     elif command.startswith("commit"):
         facts = staged
+        if (control / f"hold_commit_{os.getpid()}").exists():
+            (control / f"commit_held_{os.getpid()}").touch()
+            while (control / f"hold_commit_{os.getpid()}").exists():
+                time.sleep(0.005)
         if (control / "die_on_commit").exists():
             os._exit(42)
         if (control / "fail_replay").exists() and command == "commit;":

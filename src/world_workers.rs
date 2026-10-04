@@ -262,6 +262,7 @@ impl WorldManager {
             status["replayed"] = json!(true);
             return Ok(status);
         }
+        super::boundary::require_ordinary(world)?;
         if world.workers.len() >= MAX_WORKERS {
             return Err("World worker history limit reached".into());
         }

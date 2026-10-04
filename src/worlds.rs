@@ -23,6 +23,13 @@ mod persistence;
 use persistence::{atomic_json, persist, persist_if_changed};
 #[path = "world_admission.rs"]
 mod admission;
+#[path = "world_boundary.rs"]
+mod boundary;
+pub use boundary::{
+    BoundCheckpointRestore, BoundaryAdmission, BoundaryKey, ExternalPublicationPolicy,
+    ExternalReceipt, FrozenBlob, FrozenBlobPage, FrozenBlobRead, FrozenManifest, FrozenOutput,
+    PublicationBinding,
+};
 #[path = "world_storage.rs"]
 mod storage;
 #[path = "world_workers.rs"]
@@ -79,6 +86,9 @@ fn is_instance(purpose: &str) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorldDefinition {
+    /// Opt-in external publication; legacy serialized definitions omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_publication: Option<ExternalPublicationPolicy>,
     pub label: String,
     pub processor: ProcessorReference,
     /// `instance` (default) or `test`; test worlds run their scenarios after install.
@@ -149,6 +159,8 @@ struct World {
     workers: Vec<workers::Worker>,
     #[serde(skip)]
     pending: Option<std::sync::mpsc::Receiver<StartOutcome>>,
+    #[serde(skip)]
+    boundary_job: Option<boundary::Job>,
     #[serde(skip)]
     stop_requested: bool,
     /// Last observed scenario run of a test world; copied from the start thread.
@@ -269,6 +281,7 @@ impl WorldManager {
             }
             workers::recover(&mut world);
             admission::recover(&mut world);
+            boundary::recover(&build_root, &id, &mut world)?;
             if matches!(world.state.as_str(), "starting" | "running" | "stopping") {
                 world.state = "interrupted".into();
                 world.error =
@@ -709,6 +722,7 @@ impl WorldManager {
             &definition.processor.processor_id,
             Some(&definition.processor.version),
         )?;
+        boundary::validate_definition(&definition, &registry, &record)?;
         if definition.purpose == "test" {
             if definition.scenarios.is_empty() {
                 return Err("A test world requires at least one scenario".into());
@@ -739,6 +753,7 @@ impl WorldManager {
                 admission: admission::AdmissionState::default(),
                 workers: Vec::new(),
                 pending: None,
+                boundary_job: None,
                 stop_requested: false,
                 test: None,
                 test_progress: None,
@@ -796,6 +811,7 @@ impl WorldManager {
                 processor_id: request.processor_id.clone(),
                 version: request.version.clone(),
             },
+            external_publication: None,
             purpose: "test".into(),
             scenarios,
         })?;
@@ -859,9 +875,9 @@ impl WorldManager {
     ) -> Result<Value, String> {
         let registry = self.registry()?;
         let controls = self.shutdown.controls.clone();
-        let mut controls = controls.lock().map_err(|_| "Shutdown lock poisoned")?;
         self.ensure_starting_allowed()?;
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
+        boundary::guard_start(world, restore.as_ref())?;
         if world.instance.is_some() || world.pending.is_some() {
             return Err("World already owns an instance; stop it before restarting".into());
         }
@@ -915,7 +931,17 @@ impl WorldManager {
             live: live.clone(),
             handle: Some(spawn_tailer(Reader::new(log), state, stop, live)),
         });
-        controls.insert(id.into(), backend.control.clone());
+        {
+            let mut controls = controls.lock().map_err(|_| "Shutdown lock poisoned")?;
+            if self.shutdown.stopped.load(Ordering::SeqCst) {
+                drop(controls);
+                if let Some(mut tailer) = world.tailer.take() {
+                    tailer.stop();
+                }
+                return Err("World owner is shutting down".into());
+            }
+            controls.insert(id.into(), backend.control.clone());
+        }
         let mut instance =
             ProgramInstance::new(backend, BTreeMap::new(), Some(registry), Some(id.into()));
         // Managed worlds build under the lean lowering (A14): identical public relations,
@@ -948,7 +974,10 @@ impl WorldManager {
             if let Some(mut tailer) = world.tailer.take() {
                 tailer.stop();
             }
-            controls.remove(id);
+            controls
+                .lock()
+                .map_err(|_| "Shutdown lock poisoned")?
+                .remove(id);
             world.state = "failed".into();
             world.error = Some(format!("Cannot persist starting state: {error}"));
             return Err(error);
@@ -988,7 +1017,6 @@ impl WorldManager {
             };
             let _ = sender.send(result);
         });
-        drop(controls);
         self.status(id)
     }
     pub fn stop(&mut self, id: &str) -> Result<Value, String> {
@@ -1014,7 +1042,7 @@ impl WorldManager {
             #[cfg(unix)]
             control.stop();
         }
-        world.state = if world.pending.is_some() {
+        world.state = if world.pending.is_some() || world.boundary_job.is_some() {
             "stopping"
         } else {
             "stopped"
@@ -1025,6 +1053,7 @@ impl WorldManager {
     }
     pub fn execute(&mut self, id: &str, operation: &str, args: &Value) -> Result<Value, String> {
         self.status(id)?;
+        boundary::guard_execute(self.worlds.get(id).ok_or("Unknown world")?, operation)?;
         if operation.starts_with("processor_")
             || matches!(
                 operation,
@@ -1048,6 +1077,7 @@ impl WorldManager {
     }
     fn status_with(&mut self, id: &str, summary: bool) -> Result<Value, String> {
         self.poll_storage();
+        self.poll_boundary(id)?;
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
         workers::poll(world);
         let completion = world.pending.as_ref().map(|receiver| receiver.try_recv());
@@ -1137,7 +1167,13 @@ impl WorldManager {
                 tailer.stop();
             }
         }
-        persist_if_changed(&self.build_root, id, world)?;
+        if let Err(error) = persist_if_changed(&self.build_root, id, world) {
+            if world.definition.external_publication.is_none() {
+                return Err(error);
+            }
+            world.persistence.checkpoint_error = Some(error);
+            world.persistence_dirty = true;
+        }
         let generation_dir = self.build_root.join(id).join(world.generation.to_string());
         let build = if world.state == "starting"
             || (world.state == "failed" && world.instance.is_none() && world.generation > 0)
@@ -1163,6 +1199,10 @@ impl WorldManager {
             "persistence":persistence::status(&self.build_root, id, world, &revision),
             "workers":workers::statuses(world),
             "test":world.test});
+        if world.definition.external_publication.is_some() {
+            status["external_publication"] = json!({"pending":world.admission.external_pending,
+                "head":world.admission.external_head,"busy":world.boundary_job.is_some()});
+        }
         if let Some(entries) = status["persistence"]["checkpoints"].as_array_mut() {
             for entry in entries {
                 self.storage_configuration.observe_entry(entry);
@@ -1514,6 +1554,17 @@ impl WorldShutdown {
 impl Drop for WorldManager {
     fn drop(&mut self) {
         self.shutdown.stop_all();
+        let ids: Vec<_> = self.worlds.keys().cloned().collect();
+        for id in ids {
+            if let Some(job) = self
+                .worlds
+                .get_mut(&id)
+                .and_then(|w| w.boundary_job.as_mut())
+            {
+                job.join();
+            }
+            let _ = self.poll_boundary(&id);
+        }
         for (id, world) in self.worlds.iter_mut() {
             workers::shutdown(world);
             if let Some(instance) = world.instance.take() {

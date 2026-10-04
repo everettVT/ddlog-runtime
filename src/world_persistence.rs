@@ -27,6 +27,8 @@ pub(super) struct Origin {
 #[serde(deny_unknown_fields)]
 pub(super) struct Receipt {
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boundary: Option<Value>,
     pub format: String,
     pub receipt_id: String,
     pub program: ProgramIdentity,
@@ -38,8 +40,12 @@ pub(super) struct Receipt {
 }
 impl Receipt {
     pub fn metadata(&self) -> Value {
-        json!({"world_checkpoint":{"schema_version":self.schema_version,
-            "receipt_id":self.receipt_id,"program":self.program,"origin":self.origin}})
+        let mut metadata = json!({"world_checkpoint":{"schema_version":self.schema_version,
+            "receipt_id":self.receipt_id,"program":self.program,"origin":self.origin}});
+        if let Some(boundary) = &self.boundary {
+            metadata["world_checkpoint"]["boundary"] = boundary.clone();
+        }
+        metadata
     }
     pub fn validate(&self) -> Result<()> {
         component(&self.receipt_id)?;
@@ -292,6 +298,7 @@ impl WorldManager {
     /// published in this owner's private store; another world may use it only
     /// with the identical processor pin. Ordinary Start never consults it.
     pub fn restore_async(&mut self, id: &str, receipt: &Value) -> Result<Value> {
+        super::boundary::require_ordinary(self.worlds.get(id).ok_or("Unknown world")?)?;
         self.ensure_starting_allowed()?;
         self.status_with(id, true)?;
         let world = self.worlds.get(id).ok_or("Unknown world")?;
@@ -330,15 +337,36 @@ pub(super) fn freeze(world: &World, id: &str, format: &str) -> Result<(Receipt, 
         return Err("Checkpoint requires a running world without pending lifecycle work".into());
     }
     let instance = world.instance.as_ref().ok_or("World is not running")?;
+    freeze_instance(
+        instance,
+        id,
+        world.generation,
+        format,
+        crate::bounded::owner_identity(),
+        None,
+        &world.admission.effects,
+    )
+}
+
+pub(super) fn freeze_instance(
+    instance: &crate::ProgramInstance,
+    id: &str,
+    generation: u64,
+    format: &str,
+    receipt_id: String,
+    boundary: Option<Value>,
+    effects: &super::admission::Effects,
+) -> Result<(Receipt, Vec<u8>)> {
     let program = instance.checkpoint_identity()?;
     let mut receipt = Receipt {
         schema_version: 1,
+        boundary,
         format: format.into(),
         storage: None,
-        receipt_id: crate::bounded::owner_identity(),
+        receipt_id,
         origin: Origin {
             world_id: id.into(),
-            generation: world.generation,
+            generation,
             revision: instance.backend.revision(),
             program_version: instance.backend.version,
             build: instance.backend.build_identity(),
@@ -350,9 +378,8 @@ pub(super) fn freeze(world: &World, id: &str, format: &str) -> Result<(Receipt, 
     // Backend owns format validation and the acknowledged input snapshot,
     // including empty inputs and format limits. No output/provider replay.
     let mut metadata = receipt.metadata();
-    if !world.admission.effects.is_empty() {
-        metadata["effects"] =
-            serde_json::to_value(&world.admission.effects).map_err(|e| e.to_string())?;
+    if !effects.is_empty() {
+        metadata["effects"] = serde_json::to_value(effects).map_err(|e| e.to_string())?;
     }
     let bytes = instance.backend.checkpoint_bytes(metadata)?;
     receipt.checkpoint_sha256 = crate::checkpoint::inspect(&bytes)?.0;
@@ -479,7 +506,7 @@ pub(super) fn persist(root: &std::path::Path, id: &str, world: &mut World) -> Re
 pub(super) fn atomic_json(path: &Path, value: &Value) -> Result<()> {
     atomic_bytes(path, &serde_json::to_vec(value).map_err(|e| e.to_string())?)
 }
-fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(super) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or("Missing persistence parent")?;
     let temp = path.with_extension("json.tmp");
     let mut options = OpenOptions::new();
