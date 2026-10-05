@@ -64,6 +64,60 @@ fn definition(manager: &WorldManager) -> WorldDefinition {
 fn echo_definition() -> Value {
     json!({"rules":"echo(N,S) :- source(N,S).","schemas":{"source":{"input":true,"fields":["int","string"]},"echo":{"input":false,"fields":["int","string"]}}})
 }
+fn typed_definition(manager: &WorldManager) -> WorldDefinition {
+    let record = manager.registry().unwrap().create(serde_json::from_value(json!({
+        "rules":"echo(E,B,D) :- source(E,B,D).",
+        "schemas":{"source":{"input":true,"fields":["int","bool","double"]},"echo":{"input":false,"fields":["int","bool","double"]}}
+    })).unwrap(), None).unwrap();
+    WorldDefinition {
+        processor: ProcessorReference {
+            processor_id: record.processor_id,
+            version: record.version,
+        },
+        label: "Typed values".into(),
+        external_publication: None,
+        purpose: "instance".into(),
+        scenarios: vec![],
+    }
+}
+
+#[test]
+fn signed_zero_scenarios_compare_canonical_rows_and_reject_duplicates() {
+    let f = Fixture::new();
+    let mut manager = f.manager();
+    let def = typed_definition(&manager);
+    let values = vec![json!(1), json!(true), json!(-0.0)];
+    let duplicate = scenario(
+        "duplicates",
+        values.clone(),
+        vec![values.clone(), vec![json!(1), json!(true), json!(0.0)]],
+    );
+    assert!(manager
+        .scenarios_set(
+            &def.processor.processor_id,
+            &def.processor.version,
+            vec![duplicate]
+        )
+        .is_err());
+    manager
+        .scenarios_set(
+            &def.processor.processor_id,
+            &def.processor.version,
+            vec![scenario("canonical", values.clone(), vec![values])],
+        )
+        .unwrap();
+    let started = manager
+        .test(TestRequest {
+            processor_id: def.processor.processor_id,
+            version: def.processor.version,
+            scenarios: None,
+            keep_world: true,
+        })
+        .unwrap();
+    let id = started["id"].as_str().unwrap();
+    let status = wait_until(&mut manager, id, |s| s["test"]["phase"] == "done");
+    assert_eq!(status["test"]["passed"], true, "{status}");
+}
 /// Register through the control-plane path so the definition carries a name.
 fn named(manager: &WorldManager, name: &str) -> WorldDefinition {
     let record = manager

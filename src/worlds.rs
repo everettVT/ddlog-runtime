@@ -1336,11 +1336,7 @@ pub fn derived_name(record: &ProcessorVersion) -> Result<String, String> {
     })
 }
 fn typed(value: &Value, field: &str) -> bool {
-    match field {
-        "int" => value.as_i64().is_some(),
-        "string" => value.is_string(),
-        _ => false,
-    }
+    crate::cells::matches(value, field)
 }
 fn row_matches(row: &[Value], fields: &[String], what: &str) -> Result<(), String> {
     if row.len() != fields.len() {
@@ -1410,7 +1406,8 @@ pub fn validate_scenarios(
                     &relation.fields,
                     &format!("Scenario {}: expected {name} row {index}", scenario.name),
                 )?;
-                if !seen.insert(serde_json::to_string(row).map_err(|e| e.to_string())?) {
+                let canonical = crate::cells::row(&relation.fields, row)?;
+                if !seen.insert(serde_json::to_string(&canonical).map_err(|e| e.to_string())?) {
                     return Err(format!("Scenario {}: expected {name} row {index} is a duplicate; relations are sets", scenario.name));
                 }
             }
@@ -1461,6 +1458,18 @@ fn run_scenarios(
             result["revision"] = applied["revision"].clone();
             let mut passed = true;
             for (name, expected) in &scenario.expect {
+                let expected: Vec<Vec<Value>> = expected
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .cloned()
+                            .map(|mut value| {
+                                crate::cells::normalize(&mut value);
+                                value
+                            })
+                            .collect()
+                    })
+                    .collect();
                 let (revision, observed) = read_relation(instance, name)?;
                 result["revision"] = json!(revision);
                 let key = |row: &Vec<Value>| serde_json::to_string(row).unwrap_or_default();

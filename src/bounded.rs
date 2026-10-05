@@ -109,23 +109,23 @@ impl Backend {
         if schema.input {
             return Err("Bounded queries accept output relations only".into());
         }
-        for (position, value) in &query.filters {
+        let mut filters = query.filters.clone();
+        for (position, value) in &mut filters {
             let field = schema
                 .fields
                 .get(*position)
                 .ok_or_else(|| format!("Filter position {position} exceeds relation arity"))?;
-            match field.as_str() {
-                "int" if value.as_i64().is_some() => (),
-                "string" if value.as_str().is_some() => (),
-                _ => return Err(format!("Filter position {position} requires {field}")),
+            if !crate::cells::matches(value, field) {
+                return Err(format!("Filter position {position} requires {field}"));
             }
+            crate::cells::normalize(value);
         }
         let runtime = self.runtime.as_mut().ok_or("Install a program first")?;
         let offset = if let Some(cursor) = &query.continuation {
             if cursor.owner != runtime.identity
                 || cursor.revision != self.revision
                 || cursor.predicate != predicate
-                || cursor.filters != query.filters
+                || cursor.filters != filters
             {
                 return Err("Continuation does not match the live owner, revision or query".into());
             }
@@ -153,8 +153,7 @@ impl Backend {
                 let Some(row) = decoded.pop() else {
                     return Ok(());
                 };
-                if !query
-                    .filters
+                if !filters
                     .iter()
                     .all(|(position, value)| row[*position] == *value)
                 {
@@ -203,7 +202,7 @@ impl Backend {
                 owner: runtime.identity.clone(),
                 revision: self.revision,
                 predicate: predicate.to_string(),
-                filters: query.filters.clone(),
+                filters,
                 offset: offset
                     .checked_add(page.rows.len() as u64)
                     .ok_or("Row offset exhausted")?,

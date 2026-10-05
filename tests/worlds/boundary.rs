@@ -376,6 +376,47 @@ fn commits(f: &Fixture) -> usize {
         .filter(|l| l.starts_with("commit"))
         .count()
 }
+
+#[test]
+fn opposite_zero_boundary_key_is_identical_and_nonfinite_freeze_stays_blocked() {
+    for nonfinite in [false, true] {
+        let f = Fixture::new();
+        let mut m = f.manager();
+        let mut def = typed_definition(&m);
+        def.external_publication = Some(ddlog_runtime::worlds::ExternalPublicationPolicy {
+            namespace: "archetype".into(),
+            outputs: vec!["echo".into()],
+            max_rows: 1000,
+            max_bytes: 1024 * 1024,
+        });
+        let id = m.create(def).unwrap();
+        m.start(&id).unwrap();
+        if nonfinite {
+            fs::write(f.root.join("nonfinite_query"), "").unwrap();
+        }
+        let before = commits(&f);
+        let mut claim = request(&id, 1, 1, "zero", None);
+        claim["admission"]["changes"][0]["values"] = json!([1, true, -0.0]);
+        let first = key(&admit(&mut m, claim.clone()));
+        let status = finished(&mut m, &first);
+        claim["admission"]["changes"][0]["values"][2] = json!(0.0);
+        let replay = key(&admit(&mut m, claim));
+        assert_eq!(first, replay);
+        assert_eq!(commits(&f), before + 1);
+        if nonfinite {
+            assert_ne!(status["state"], "frozen", "{status}");
+            assert!(status["boundary"]["manifest"].is_null(), "{status}");
+            let mut next = request(&id, 1, 2, "next", None);
+            next["admission"]["changes"][0]["values"] = json!([2, false, 1.0]);
+            assert!(m
+                .admit_boundary_async(serde_json::from_value(next).unwrap())
+                .is_err());
+            assert_eq!(commits(&f), before + 1);
+        } else {
+            assert_eq!(status["state"], "frozen", "{status}");
+        }
+    }
+}
 fn blob(m: &mut WorldManager, key: &BoundaryKey, sha: &str) -> Vec<u8> {
     let mut bytes = Vec::new();
     let mut offset = 0;

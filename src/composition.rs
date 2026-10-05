@@ -396,7 +396,7 @@ impl Expansion {
                 || input
                     .fields
                     .iter()
-                    .any(|kind| kind != "int" && kind != "string")
+                    .any(|kind| crate::lower::native_type(kind).is_err())
             {
                 return Err(format!("External input {} requires a valid name, positive int/string arity and at least one target", qualified(scope, name)));
             }

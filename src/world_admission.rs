@@ -288,7 +288,8 @@ impl WorldManager {
             .ok_or("Unknown admission")?;
         Ok(record.result(&request.id, true, false))
     }
-    pub fn admit_inputs(&mut self, request: AdmitInputs) -> Result<Value> {
+    pub fn admit_inputs(&mut self, mut request: AdmitInputs) -> Result<Value> {
+        normalize_inputs(&mut request);
         validate_request(&request)?;
         let key = record_key(request.expected_generation, &request.admission_key);
         let hash = workers::digest(&request)?;
@@ -414,6 +415,14 @@ impl WorldManager {
             world.persistence_dirty = true;
         }
         Ok(record.result(&request.id, false, authority))
+    }
+}
+
+pub(super) fn normalize_inputs(request: &mut AdmitInputs) {
+    for change in &mut request.changes {
+        for value in &mut change.values {
+            crate::cells::normalize(value);
+        }
     }
 }
 

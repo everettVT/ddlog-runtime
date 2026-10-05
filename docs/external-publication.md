@@ -73,7 +73,7 @@ or joins. No external publisher callback runs under the manager.
 
 After one acknowledged native apply, the job captures selected complete outputs
 and a separate managed checkpoint at the same revision. Each row blob is a JSON
-array of typed row arrays. Fields are ordered native `int`/`string` types; zero-row
+array of typed row arrays. Fields are ordered native `int`/`string`/`bool`/finite `double` types; zero-row
 outputs have an explicit schema, zero count and an empty-array blob. Outputs are
 full snapshots, not deltas. Native state and transport failures never become an
 empty successful snapshot.

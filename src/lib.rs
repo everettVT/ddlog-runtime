@@ -11,6 +11,7 @@ mod telemetry;
 pub mod worlds;
 pub use instance::ProgramInstance;
 mod bounded;
+mod cells;
 mod checkpoint;
 #[cfg(feature = "iceberg")]
 pub mod iceberg_checkpoint;
@@ -457,6 +458,10 @@ impl Backend {
                     .ok_or("Expected signed 64-bit integer")?
                     .to_string(),
                 "string" => lower::string_literal(value.as_str().ok_or("Expected string")?)?,
+                "bool" => value.as_bool().ok_or("Expected exact Bool")?.to_string(),
+                "double" if value.is_f64() => {
+                    syntax::float_text(value.as_f64().ok_or("Expected finite Float64")?)?
+                }
                 _ => return Err("Unsupported type".into()),
             });
         }
@@ -479,11 +484,14 @@ impl Backend {
         let mut staged = self.facts.clone();
         for change in changes.as_array().ok_or("Expected changes array")? {
             let pred = change["predicate"].as_str().ok_or("Missing predicate")?;
-            let values = change["values"].as_array().ok_or("Missing values")?;
-            let fact = self.fact(pred, values)?;
+            let mut values = change["values"].as_array().ok_or("Missing values")?.clone();
+            for value in &mut values {
+                cells::normalize(value);
+            }
+            let fact = self.fact(pred, &values)?;
             match change["op"].as_str() {
                 Some("insert") => {
-                    staged.insert((pred.to_string(), fact), values.clone());
+                    staged.insert((pred.to_string(), fact), values);
                 }
                 Some("delete") => {
                     staged.remove(&(pred.to_string(), fact));

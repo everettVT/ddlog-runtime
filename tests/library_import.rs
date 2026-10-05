@@ -4,13 +4,15 @@ use ddlog_runtime::registry::{ProcessorDefinition, ProcessorRegistry, ProcessorV
 use ddlog_runtime::worlds::{InventoryQuery, LibraryImportRequest, WorldManager};
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
+static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "library-import-{}-{}",
+            "library-import-{}-{}-{}",
             std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

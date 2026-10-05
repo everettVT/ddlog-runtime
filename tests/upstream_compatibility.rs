@@ -213,6 +213,41 @@ fn mcp_adapter_retains_upstream_identity_and_all_standalone_tool_schemas() {
             &json!({"jsonrpc":"2.0","id":1,"method":method,"params":{}}).to_string(),
         )
         .unwrap();
-        assert_eq!(response["result"], json_file(filename));
+        let mut expected = json_file(filename);
+        if method == "tools/list" {
+            // Preserve the captured upstream fixture byte-for-byte; the only
+            // accepted schema delta is the reviewed live Bool/Double extension.
+            fn extend_types(value: &mut Value, counts: &mut [usize; 2]) {
+                match value {
+                    Value::Object(object) => {
+                        if object.get("enum") == Some(&json!(["int", "string"])) {
+                            object
+                                .insert("enum".into(), json!(["int", "string", "bool", "double"]));
+                            counts[0] += 1;
+                        }
+                        if object.get("type") == Some(&json!(["integer", "string"])) {
+                            object.insert(
+                                "type".into(),
+                                json!(["integer", "string", "boolean", "number"]),
+                            );
+                            counts[1] += 1;
+                        }
+                        for child in object.values_mut() {
+                            extend_types(child, counts);
+                        }
+                    }
+                    Value::Array(array) => {
+                        for child in array {
+                            extend_types(child, counts);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut counts = [0; 2];
+            extend_types(&mut expected, &mut counts);
+            assert_eq!(counts, [3, 1]);
+        }
+        assert_eq!(response["result"], expected);
     }
 }

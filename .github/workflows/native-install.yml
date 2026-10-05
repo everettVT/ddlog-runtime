@@ -13,9 +13,12 @@ on:
       - 'src/lowering*.rs'
       - 'src/lower.rs'
       - 'src/rows.rs'
+      - 'src/cells.rs'
+      - 'src/bounded.rs'
       - 'src/lib.rs'
       - 'crates/syntax/**'
       - 'tests/worlds*.rs'
+      - 'tests/live_values.rs'
       - 'tests/worlds/**'
       - 'tests/fixtures/**'
       - 'src/iceberg_checkpoint.rs'
@@ -47,7 +50,7 @@ jobs:
         run: |
           source "$RUNNER_TEMP/ddlog-native/env.sh"
           python3 scripts/test-native-install.py "$RUNNER_TEMP/native-smoke"
-      - name: Native external cut and historical fork contracts
+      - name: Native external cut, historical fork and live type contracts
         run: |
           driver="$RUNNER_TEMP/native-contract-driver.sh"
           cat > "$driver" <<'SH'
@@ -60,6 +63,7 @@ jobs:
           export DDLOG_RUNTIME_NATIVE_BUILD="$driver"
           cargo test --locked --test worlds_native external_cut_freezes_real_fixed_point_restores_and_retracts -- --ignored --nocapture
           cargo test --locked --test worlds_native historical_fork_restores_selected_fixed_point_and_retracts_independently -- --ignored --nocapture
+          cargo test --locked --test live_values actual_native_composition_values_checkpoint_and_opposite_zero_delete -- --ignored --nocapture
       - name: Build runtime Iceberg acceptance
         run: cargo build --locked --features iceberg --example iceberg_recovery
       - name: Native Iceberg checkpoint across processes

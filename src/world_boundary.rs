@@ -559,7 +559,8 @@ pub(super) fn recover(root: &Path, id: &str, world: &mut World) -> Result<()> {
     Ok(())
 }
 impl WorldManager {
-    pub fn admit_boundary_async(&mut self, request: BoundaryAdmission) -> Result<Value> {
+    pub fn admit_boundary_async(&mut self, mut request: BoundaryAdmission) -> Result<Value> {
+        admission::normalize_inputs(&mut request.admission);
         admission::validate_request(&request.admission)?;
         validate_binding(&request.binding)?;
         if request.admission.effect.is_some()

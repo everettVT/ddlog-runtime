@@ -7,7 +7,7 @@ wire shapes and operational prerequisites.
 
 | Boundary | Required behavior | Executable evidence |
 | --- | --- | --- |
-| Language | Explicit `int`/`string` schemas; positive recursion and safe stratified negation; reject unsupported constructs and negative cycles before compilation | `tests/ddlog_lowering.rs`, `tests/recursive_lowering.rs` |
+| Language | Explicit `int`/`string`/`bool`/finite `double` schemas; positive recursion and safe stratified negation; reject unsupported constructs and negative cycles before compilation | `tests/ddlog_lowering.rs`, `tests/recursive_lowering.rs` |
 | Definitions | Immutable versions preserve identity and lineage; conditional pointer and lifecycle updates reject stale callers | `tests/processor_registry.rs` |
 | Logical creation (trusted Rust ports) | Registry publication retains exact pins; one manager catalog reserves fresh/fork destinations and requires durable context confirmation before activation | `tests/processor_registry.rs`, `tests/worlds/boundary.rs`, [logical creation](logical-creation.md) |
 | Composition | Resolve exact versions, isolate private names, validate bindings, and preserve public interfaces through nesting | `tests/processor_composition_registry.rs` |

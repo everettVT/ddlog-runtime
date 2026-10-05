@@ -116,6 +116,28 @@ impl Cursor<'_> {
         self.rest = &self.rest[end..];
         Ok(Value::from(n))
     }
+    fn float(&mut self) -> Result<Value, String> {
+        self.ws();
+        let end = self
+            .rest
+            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+            .unwrap_or(self.rest.len());
+        let value = crate::syntax::parse_float(&self.rest[..end])?;
+        self.rest = &self.rest[end..];
+        Ok(Value::from(value))
+    }
+    fn boolean(&mut self) -> Result<Value, String> {
+        self.ws();
+        if let Some(rest) = self.rest.strip_prefix("true") {
+            self.rest = rest;
+            Ok(Value::Bool(true))
+        } else if let Some(rest) = self.rest.strip_prefix("false") {
+            self.rest = rest;
+            Ok(Value::Bool(false))
+        } else {
+            Err("Expected native Bool".into())
+        }
+    }
 }
 
 /// Decode only full record snapshots (`R_name{.f0 = ..., .f1 = ...}`).
@@ -128,7 +150,7 @@ pub fn decode_rows(
 ) -> Result<Vec<Vec<Value>>, String> {
     if !crate::lower::ident(predicate)
         || fields.is_empty()
-        || fields.iter().any(|f| f != "int" && f != "string")
+        || fields.iter().any(|f| crate::lower::native_type(f).is_err())
     {
         return Err("Unsupported row schema".into());
     }
@@ -145,10 +167,12 @@ pub fn decode_rows(
             }
             cursor.token(&format!(".f{index}"))?;
             cursor.token("=")?;
-            row.push(if field == "int" {
-                cursor.int()?
-            } else {
-                Value::String(cursor.string()?)
+            row.push(match field.as_str() {
+                "int" => cursor.int()?,
+                "string" => Value::String(cursor.string()?),
+                "bool" => cursor.boolean()?,
+                "double" => cursor.float()?,
+                _ => unreachable!("validated schema"),
             });
         }
         cursor.token("}")?;

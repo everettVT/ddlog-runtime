@@ -121,11 +121,7 @@ impl State {
             }
             let mut fields = Vec::new();
             for (i, field) in schema.fields.iter().enumerate() {
-                let ty = match field.as_str() {
-                    "int" => "signed<64>",
-                    "string" => "string",
-                    _ => return Err("Unsupported checkpoint field type".into()),
-                };
+                let ty = crate::lower::native_type(field)?;
                 fields.push(format!("f{i}: {ty}"));
             }
             // Derived relations are `output relation` under lowering version 1
@@ -162,6 +158,18 @@ impl State {
         let mut facts = BTreeMap::new();
         for (name, rows) in &self.inputs {
             for row in rows {
+                for value in row {
+                    if value.is_f64()
+                        && value
+                            .as_f64()
+                            .is_some_and(|v| v == 0.0 && v.is_sign_negative())
+                    {
+                        return Err(
+                            "Checkpoint Float64 zero must be canonical positive zero".into()
+                        );
+                    }
+                }
+                crate::cells::row(&self.schemas[name].fields, row)?;
                 let fact = validator.fact(name, row)?;
                 if facts.insert((name.clone(), fact), row.clone()).is_some() {
                     return Err("Duplicate checkpoint input fact".into());

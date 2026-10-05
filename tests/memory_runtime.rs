@@ -72,6 +72,55 @@ fn rewrite_checkpoint(path: &Path, edit: impl FnOnce(&mut Value)) {
     fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
 }
 
+#[test]
+fn rehashed_malformed_live_cells_never_build_or_replace_a_target() {
+    let f = Fixture::new();
+    let mut live = f.backend("typed");
+    live.install(
+        "echo(E,B,D) :- source(E,B,D).",
+        json!({
+            "source":{"input":true,"fields":["int","bool","double"]},
+            "echo":{"input":false,"fields":["int","bool","double"]}
+        }),
+    )
+    .unwrap();
+    live.apply_without_deltas(
+        &json!([{"op":"insert","predicate":"source","values":[1,false,0.0]}]),
+    )
+    .unwrap();
+    let retained = live.export_inputs().unwrap();
+    let revision = live.revision();
+    let path = f.root.join("typed-checkpoint.json");
+    live.save_checkpoint(&path, Value::Null).unwrap();
+    let original = fs::read(&path).unwrap();
+    for (index, (column, invalid)) in [
+        (2, json!(1)),
+        (2, json!(-0.0)),
+        (2, json!(null)),
+        (2, json!("1.0")),
+        (1, json!(1)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fs::write(&path, &original).unwrap();
+        rewrite_checkpoint(&path, |state| {
+            state["inputs"]["source"][0][column] = invalid
+        });
+        let name = format!("bad-live-{index}");
+        let mut target = f.backend(&name);
+        assert!(target.restore_checkpoint(&path).is_err());
+        assert_eq!(target.health(), "uninitialized");
+        assert_eq!(target.revision(), 0);
+        assert!(!f.root.join(name).exists());
+        assert_eq!(live.revision(), revision);
+        assert_eq!(live.export_inputs().unwrap(), retained);
+        fs::write(&path, &original).unwrap();
+        target.restore_checkpoint(&path).unwrap();
+        assert_eq!(target.export_inputs().unwrap(), retained);
+    }
+}
+
 fn leaf_definition(field: &str) -> ProcessorDefinition {
     serde_json::from_value(json!({
         "rules":"result(X) :- source(X).",
