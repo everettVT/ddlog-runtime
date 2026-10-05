@@ -19,6 +19,17 @@ pub enum ForkFault {
     None,
     AfterReservation,
     AfterChildRecord,
+    ChildDirectorySync,
+}
+impl ForkFault {
+    fn sync_child_directory(self, path: &std::path::Path) -> std::io::Result<()> {
+        if matches!(self, Self::ChildDirectorySync) {
+            return Err(std::io::Error::other(
+                "Injected child directory sync failure",
+            ));
+        }
+        std::fs::File::open(path)?.sync_all()
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -144,7 +155,25 @@ impl WorldManager {
     fn materialization_path(&self, request_key: &str) -> Result<PathBuf> {
         Ok(self.fork_path(request_key)?.with_extension("materialized"))
     }
-    fn fence_materialization(&self, record: &Record, world: &World) -> Result<()> {
+    fn fence_materialization(
+        &self,
+        record: &Record,
+        world: &World,
+        fault: ForkFault,
+    ) -> Result<()> {
+        // The retained rename may have succeeded while its directory sync
+        // failed. Repeat these fences without rewriting the original record,
+        // even when recovery already loaded it or the marker already exists.
+        let child_dir = self.build_root.join(&record.reservation.child_world_id);
+        std::fs::File::open(child_dir.join("world.json"))
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())?;
+        fault
+            .sync_child_directory(&child_dir)
+            .map_err(|e| e.to_string())?;
+        std::fs::File::open(&self.build_root)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())?;
         let marker = self.materialization_path(&record.reservation.request_key)?;
         if marker.exists() {
             let saved: ForkReservation =
@@ -201,7 +230,7 @@ impl WorldManager {
             {
                 return Err("Reserved fork child changed".into());
             }
-            return self.fence_materialization(record, world);
+            return self.fence_materialization(record, world, fault);
         }
         let dir = self.build_root.join(id);
         let world_path = dir.join("world.json");
@@ -235,7 +264,7 @@ impl WorldManager {
             {
                 return Err("Reserved fork child changed".into());
             }
-            self.fence_materialization(record, &world)?;
+            self.fence_materialization(record, &world, fault)?;
             self.worlds.insert(id.clone(), world);
             return Ok(());
         }
@@ -251,11 +280,13 @@ impl WorldManager {
             .and_then(|f| f.sync_all())
             .map_err(|e| e.to_string())?;
         // Never remove a reserved identity after an ambiguous persistence result.
-        persistence::persist(&self.build_root, id, &mut world)?;
+        persistence::persist_with_directory_sync(&self.build_root, id, &mut world, |dir| {
+            fault.sync_child_directory(dir)
+        })?;
         if matches!(fault, ForkFault::AfterChildRecord) {
             return Err("Injected failure before materialization fence".into());
         }
-        self.fence_materialization(record, &world)?;
+        self.fence_materialization(record, &world, fault)?;
         self.worlds.insert(id.clone(), world);
         Ok(())
     }

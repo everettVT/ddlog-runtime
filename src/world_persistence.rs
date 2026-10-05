@@ -486,6 +486,14 @@ pub(super) fn persist_if_changed(
     Ok(())
 }
 pub(super) fn persist(root: &std::path::Path, id: &str, world: &mut World) -> Result<()> {
+    persist_with_directory_sync(root, id, world, |parent| File::open(parent)?.sync_all())
+}
+pub(super) fn persist_with_directory_sync(
+    root: &Path,
+    id: &str,
+    world: &mut World,
+    sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<()> {
     let mut history = world.history.clone();
     if history.last().is_none_or(|last| {
         last["state"] != world.state
@@ -497,7 +505,11 @@ pub(super) fn persist(root: &std::path::Path, id: &str, world: &mut World) -> Re
     let path = root.join(id).join("world.json");
     let mut record = serde_json::to_value(&*world).map_err(|e| e.to_string())?;
     record["history"] = json!(history);
-    atomic_json(&path, &record)?;
+    atomic_bytes_with_directory_sync(
+        &path,
+        &serde_json::to_vec(&record).map_err(|e| e.to_string())?,
+        sync_directory,
+    )?;
     world.history = history;
     world.persistence_dirty = false;
     Ok(())
@@ -507,6 +519,13 @@ pub(super) fn atomic_json(path: &Path, value: &Value) -> Result<()> {
     atomic_bytes(path, &serde_json::to_vec(value).map_err(|e| e.to_string())?)
 }
 pub(super) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    atomic_bytes_with_directory_sync(path, bytes, |parent| File::open(parent)?.sync_all())
+}
+fn atomic_bytes_with_directory_sync(
+    path: &Path,
+    bytes: &[u8],
+    sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<()> {
     let parent = path.parent().ok_or("Missing persistence parent")?;
     let temp = path.with_extension("json.tmp");
     let mut options = OpenOptions::new();
@@ -522,7 +541,7 @@ pub(super) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
         file.sync_all()?;
         drop(file);
         fs::rename(&temp, path)?;
-        File::open(parent)?.sync_all()
+        sync_directory(parent)
     })();
     if let Err(error) = result {
         let _ = fs::remove_file(temp);

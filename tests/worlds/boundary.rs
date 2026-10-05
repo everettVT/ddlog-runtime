@@ -871,3 +871,53 @@ fn fork_materialization_fence_retry_preserves_completed_birth_record() {
     }
     assert_eq!(fs::read(f.root.join("commands")).unwrap(), before);
 }
+
+#[test]
+fn fork_rename_success_directory_sync_failure_repeats_the_child_fence() {
+    use ddlog_runtime::worlds::ForkFault;
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let request = fork_request(&mut m, &f);
+    let before = fs::read(f.root.join("commands")).unwrap();
+    assert!(m
+        .reserve_fork_with_fault(request.clone(), ForkFault::ChildDirectorySync)
+        .unwrap_err()
+        .contains("Injected child directory sync failure"));
+    let path = fs::read_dir(f.root.join("worlds/forks"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let child = record["reservation"]["child_world_id"].as_str().unwrap();
+    let child_path = f.root.join("worlds").join(child).join("world.json");
+    let saved = fs::read(&child_path).unwrap();
+    let marker = path.with_extension("materialized");
+    assert!(!marker.exists());
+    assert!(m.status(child).is_err());
+    // A retained rename must not bypass the failed directory fence on retry.
+    assert!(m
+        .reserve_fork_with_fault(request.clone(), ForkFault::ChildDirectorySync)
+        .expect_err("retry must re-fence the retained child record")
+        .contains("Injected child directory sync failure"));
+    assert_eq!(fs::read(&child_path).unwrap(), saved);
+    assert!(!marker.exists());
+    assert!(m.status(child).is_err());
+    let reservation = m.reserve_fork(request.clone()).unwrap();
+    assert_eq!(reservation.child_world_id, child);
+    assert_eq!(fs::read(&child_path).unwrap(), saved);
+    assert!(marker.exists());
+    // An in-memory child and existing marker must also repeat this fence.
+    assert!(m
+        .reserve_fork_with_fault(request.clone(), ForkFault::ChildDirectorySync)
+        .is_err());
+    assert_eq!(fs::read(&child_path).unwrap(), saved);
+    drop(m);
+    let mut m = f.manager();
+    assert_eq!(m.reserve_fork(request).unwrap(), reservation);
+    assert_eq!(fs::read(&child_path).unwrap(), saved);
+    assert_eq!(m.status(child).unwrap()["generation"], 0);
+    assert!(m.start_async(child).is_err());
+    assert_eq!(fs::read(f.root.join("commands")).unwrap(), before);
+}
