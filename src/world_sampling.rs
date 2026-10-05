@@ -64,7 +64,7 @@ pub(super) fn sample(command: &mut Command) -> Option<(f64, u64)> {
     let text = std::str::from_utf8(&output).ok()?;
     let mut fields = text.split_whitespace();
     let cpu = fields.next()?.parse::<f64>().ok()?;
-    let rss = fields.next()?.parse::<u64>().ok()?;
+    let rss = fields.next()?.parse::<u64>().ok()?.checked_mul(1024)?;
     if fields.next().is_some() || !cpu.is_finite() || cpu < 0.0 {
         return None;
     }

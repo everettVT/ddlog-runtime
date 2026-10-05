@@ -1645,7 +1645,7 @@ pub fn sample_process(pid: Option<u32>) -> Value {
         if let Some((cpu, rss)) = sampling::sample(&mut command) {
             result["state"] = json!("available");
             result["cpu_percent"] = json!(cpu);
-            result["resident_bytes"] = json!(rss.saturating_mul(1024));
+            result["resident_bytes"] = json!(rss);
         }
     }
     #[cfg(not(unix))]
