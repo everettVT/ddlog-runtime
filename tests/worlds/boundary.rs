@@ -767,3 +767,107 @@ fn missing_entire_fork_catalog_fails_closed() {
     .unwrap();
     assert!(error.contains("no reservation catalog"), "{error}");
 }
+#[test]
+fn lost_fork_world_record_never_recreates_a_progressed_child() {
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let request = fork_request(&mut m, &f);
+    let reserved = m.reserve_fork(request.clone()).unwrap();
+    let child = reserved.child_world_id.clone();
+    m.restore_fork_async(reserved.clone(), 0, request.checkpoint_bytes.clone())
+        .unwrap();
+    let live = await_fork(&mut m, &child);
+    m.confirm_fork_lineage(reserved.clone(), reserved.lineage_sha256().unwrap())
+        .unwrap();
+    let k = key(&admit(
+        &mut m,
+        self::request(
+            &child,
+            1,
+            live["revision"].as_u64().unwrap(),
+            "child-progress",
+            Some(&request.published.receipt_sha256),
+        ),
+    ));
+    assert_eq!(finished(&mut m, &k)["state"], "frozen");
+    drop(m);
+    let dir = f.root.join("worlds").join(&child);
+    let saved = fs::read(dir.join("world.json")).unwrap();
+    fs::remove_file(dir.join("world.json")).unwrap();
+    let before = fs::read(f.root.join("commands")).unwrap();
+    let error = WorldManager::new(
+        f.root.join("registry"),
+        f.root.join("worlds"),
+        f.root.join("build.py"),
+    )
+    .err()
+    .expect("missing progressed control record must fail closed");
+    assert!(
+        error.to_lowercase().contains("materialized") || error.contains("progress"),
+        "{error}"
+    );
+    assert!(!dir.join("world.json").exists());
+    assert_eq!(fs::read(f.root.join("commands")).unwrap(), before);
+    // A whole missing child directory is equally corrupt once birth completed.
+    let retained = f.root.join("retained-child");
+    fs::rename(&dir, &retained).unwrap();
+    assert!(WorldManager::new(
+        f.root.join("registry"),
+        f.root.join("worlds"),
+        f.root.join("build.py")
+    )
+    .is_err());
+    assert!(!dir.exists());
+    fs::rename(&retained, &dir).unwrap();
+    fs::write(dir.join("world.json"), saved).unwrap();
+    let mut m = f.manager();
+    assert_eq!(lookup(&mut m, &k)["state"], "frozen");
+    assert!(m
+        .restore_fork_async(reserved, 1, request.checkpoint_bytes)
+        .is_err());
+}
+#[test]
+fn fork_materialization_fence_retry_preserves_completed_birth_record() {
+    use ddlog_runtime::worlds::ForkFault;
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let original = fork_request(&mut m, &f);
+    let before = fs::read(f.root.join("commands")).unwrap();
+    for reopen in [false, true] {
+        let mut request = original.clone();
+        request.request_key = format!("fence-{reopen}");
+        request.destination = json!({"child":reopen});
+        assert!(m
+            .reserve_fork_with_fault(request.clone(), ForkFault::AfterChildRecord)
+            .is_err());
+        let path = fs::read_dir(f.root.join("worlds/forks"))
+            .unwrap()
+            .filter_map(|e| {
+                let path = e.unwrap().path();
+                if path.extension().and_then(|x| x.to_str()) != Some("json") {
+                    return None;
+                }
+                let record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                (record["reservation"]["request_key"] == request.request_key).then_some(path)
+            })
+            .next()
+            .unwrap();
+        let record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let child = record["reservation"]["child_world_id"].as_str().unwrap();
+        let child_path = f.root.join("worlds").join(child).join("world.json");
+        let saved = fs::read(&child_path).unwrap();
+        assert!(!path.with_extension("materialized").exists());
+        assert!(m.status(child).is_err());
+        if reopen {
+            drop(m);
+            m = f.manager();
+        }
+        let result = m.reserve_fork(request).unwrap();
+        assert_eq!(result.child_world_id, child);
+        assert_eq!(fs::read(&child_path).unwrap(), saved);
+        assert!(path.with_extension("materialized").exists());
+        assert_eq!(m.status(child).unwrap()["generation"], 0);
+        assert!(m.start_async(child).is_err());
+    }
+    assert_eq!(fs::read(f.root.join("commands")).unwrap(), before);
+}

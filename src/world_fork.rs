@@ -18,6 +18,7 @@ pub enum ForkFault {
     #[default]
     None,
     AfterReservation,
+    AfterChildRecord,
 }
 
 #[derive(Clone, Deserialize)]
@@ -140,7 +141,43 @@ impl WorldManager {
         }
         Ok(record)
     }
-    fn materialize_fork(&mut self, record: &Record) -> Result<()> {
+    fn materialization_path(&self, request_key: &str) -> Result<PathBuf> {
+        Ok(self.fork_path(request_key)?.with_extension("materialized"))
+    }
+    fn fence_materialization(&self, record: &Record, world: &World) -> Result<()> {
+        let marker = self.materialization_path(&record.reservation.request_key)?;
+        if marker.exists() {
+            let saved: ForkReservation =
+                serde_json::from_slice(&persistence::read_bounded(&marker, MAX_RECORD)?)
+                    .map_err(|e| e.to_string())?;
+            if saved != record.reservation {
+                return Err("Fork materialization identity changed".into());
+            }
+            for path in [marker.as_path(), marker.parent().unwrap()] {
+                std::fs::File::open(path)
+                    .and_then(|f| f.sync_all())
+                    .map_err(|e| e.to_string())?;
+            }
+        } else {
+            if world.generation != 0
+                || world.state != "created"
+                || !world.admission.records.is_empty()
+                || world.admission.external_pending.is_some()
+                || world.admission.external_head.is_some()
+                || world.fork.as_ref().is_none_or(|f| f.ready)
+                || world.persistence.restore_requested.is_some()
+                || world.persistence.restored_from.is_some()
+            {
+                return Err("Progressed fork has no materialization fence".into());
+            }
+            persistence::atomic_json(
+                &marker,
+                &serde_json::to_value(&record.reservation).map_err(|e| e.to_string())?,
+            )?;
+        }
+        Ok(())
+    }
+    fn materialize_fork(&mut self, record: &Record, fault: ForkFault) -> Result<()> {
         // Repeat every durability fence after an ambiguous rename/fsync result.
         let path = self.fork_path(&record.reservation.request_key)?;
         for path in [
@@ -164,6 +201,42 @@ impl WorldManager {
             {
                 return Err("Reserved fork child changed".into());
             }
+            return self.fence_materialization(record, world);
+        }
+        let dir = self.build_root.join(id);
+        let world_path = dir.join("world.json");
+        if !world_path.exists() {
+            if self
+                .materialization_path(&record.reservation.request_key)?
+                .exists()
+            {
+                return Err("Materialized fork has lost its world control record".into());
+            }
+            if dir.exists() {
+                for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+                    if entry.map_err(|e| e.to_string())?.file_name() != "world.json.tmp" {
+                        return Err("Fork progress evidence without world control record".into());
+                    }
+                }
+            }
+        } else {
+            // A prior write may have reached disk before its acknowledgment.
+            // Preserve it; never reconstruct defaults over a retained record.
+            let world: World =
+                serde_json::from_slice(&persistence::read_bounded(&world_path, MAX_RECORD)?)
+                    .map_err(|e| e.to_string())?;
+            if world.schema_version != super::SCHEMA_VERSION
+                || world
+                    .fork
+                    .as_ref()
+                    .is_none_or(|f| f.reservation != record.reservation || f.source != source)
+                || serde_json::to_value(&world.definition).map_err(|e| e.to_string())?
+                    != serde_json::to_value(&record.definition).map_err(|e| e.to_string())?
+            {
+                return Err("Reserved fork child changed".into());
+            }
+            self.fence_materialization(record, &world)?;
+            self.worlds.insert(id.clone(), world);
             return Ok(());
         }
         let pin = self.validate_world_definition(&record.definition)?;
@@ -173,13 +246,16 @@ impl WorldManager {
             source,
             ready: false,
         });
-        let dir = self.build_root.join(id);
         persistence::private_dir(&dir)?;
         std::fs::File::open(&self.build_root)
             .and_then(|f| f.sync_all())
             .map_err(|e| e.to_string())?;
         // Never remove a reserved identity after an ambiguous persistence result.
         persistence::persist(&self.build_root, id, &mut world)?;
+        if matches!(fault, ForkFault::AfterChildRecord) {
+            return Err("Injected failure before materialization fence".into());
+        }
+        self.fence_materialization(record, &world)?;
         self.worlds.insert(id.clone(), world);
         Ok(())
     }
@@ -212,7 +288,7 @@ impl WorldManager {
             if children.len() > MAX_RESERVATIONS {
                 return Err("Fork reservation catalog limit".into());
             }
-            self.materialize_fork(&record)?;
+            self.materialize_fork(&record, ForkFault::None)?;
         }
         for world in self.worlds.values() {
             if world
@@ -317,7 +393,7 @@ impl WorldManager {
         if matches!(fault, ForkFault::AfterReservation) {
             return Err("Injected failure after durable fork reservation".into());
         }
-        self.materialize_fork(&record)?;
+        self.materialize_fork(&record, fault)?;
         Ok(record.reservation)
     }
     /// Explicit generation-fenced restore, separate from reservation retries.

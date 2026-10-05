@@ -215,7 +215,7 @@ checkpoint bytes and pinned program before child effects. Its bounded manager
 catalog binds a request key, source context, destination identity, definition and
 source evidence to one child ID. The reservation is fsynced before `world.json`;
 reopen materializes a missing child record under that same ID, without activation.
-Exact retries return the reservation. Changed contents or another request for the
+A materialization fence in the same manager catalog is durable before the child can activate. A missing child control record after that fence, or retained generation/boundary evidence without a control record, is corruption and fails closed; it cannot recreate generation zero. Exact retries return the reservation. Changed contents or another request for the
 same destination reject. The catalog admits at most 1024 retained reservations.
 Destination identity must identify the destination alone, independently of the
 source or request key. Trusted embedding chooses both contexts, never paths.
