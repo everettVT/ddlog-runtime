@@ -683,6 +683,21 @@ fn native_external_cut(fork: bool) {
             child_live["persistence"]["restored_from"]["origin"]["world_id"],
             id
         );
+        let restored_rows = m
+            .execute(
+                child,
+                "query_rows",
+                &json!({"predicate":"reach","max_rows":100}),
+            )
+            .unwrap();
+        assert_eq!(restored_rows["complete"], true);
+        let mut restored = restored_rows["rows"].as_array().unwrap().clone();
+        restored.sort_by_key(|row| row.to_string());
+        assert_eq!(
+            restored,
+            json!([[1, 2], [1, 3], [2, 3]]).as_array().unwrap().clone()
+        );
+        assert_eq!(empty["boundary"]["manifest"]["outputs"][0]["rows"], 0);
         let lineage = reservation.lineage_sha256().unwrap();
         m.confirm_fork_lineage(reservation.clone(), lineage)
             .unwrap();
