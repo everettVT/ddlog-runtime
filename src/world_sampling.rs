@@ -147,7 +147,14 @@ mod tests {
 
     #[test]
     fn malformed_samples_are_unavailable() {
-        for text in ["not metrics", "NaN 1024", "-1 1024", "1 -1", "1 1024 extra"] {
+        for text in [
+            "not metrics",
+            "NaN 1024",
+            "-1 1024",
+            "1 -1",
+            "1 1024 extra",
+            "1 18446744073709551615",
+        ] {
             let mut command = Command::new("/bin/sh");
             command.args(["-c", "printf '%s' \"$1\"", "sampler", text]);
             assert!(sample(&mut command).is_none(), "{text}");
