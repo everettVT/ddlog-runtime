@@ -187,7 +187,7 @@ fn validate_json(value: &Value, max_bytes: usize) -> Result<()> {
     }
     Ok(())
 }
-fn validate_binding(binding: &PublicationBinding) -> Result<()> {
+pub(super) fn validate_binding(binding: &PublicationBinding) -> Result<()> {
     validate_json(&binding.context, 64 * 1024)?;
     if binding
         .parent_receipt_sha256
@@ -339,7 +339,7 @@ fn load_blob(dir: &Path, blob: &FrozenBlob) -> Result<Vec<u8>> {
 fn checkpoint_binding(key: &BoundaryKey, boundary: &BoundaryRecord) -> Value {
     json!({"key":key,"policy":boundary.policy,"binding":boundary.binding})
 }
-fn validate_manifest(manifest: &FrozenManifest) -> Result<persistence::Receipt> {
+pub(super) fn validate_manifest(manifest: &FrozenManifest) -> Result<persistence::Receipt> {
     validate_key(&manifest.key)?;
     validate_policy(&manifest.policy)?;
     validate_binding(&manifest.binding)?;
@@ -595,6 +595,7 @@ impl WorldManager {
         self.ensure_starting_allowed()?;
         self.status_with(id, true)?;
         let world = self.worlds.get(id).unwrap();
+        super::fork::guard_admission(world)?;
         if world.admission.external_pending.is_some() || world.boundary_job.is_some() {
             return Err("External publication remains unresolved".into());
         }
@@ -887,6 +888,16 @@ impl WorldManager {
         Ok(world.admission.records[&slot].result(&key.world_id, false, false))
     }
     pub fn restore_boundary_async(&mut self, request: BoundCheckpointRestore) -> Result<Value> {
+        if self
+            .worlds
+            .get(&request.target_world_id)
+            .is_some_and(|w| w.fork.as_ref().is_some_and(|f| !f.ready))
+        {
+            return Err("Unconfirmed fork requires exact reserved restore".into());
+        }
+        self.restore_bound(request)
+    }
+    pub(super) fn restore_bound(&mut self, request: BoundCheckpointRestore) -> Result<Value> {
         self.ensure_starting_allowed()?;
         self.status_with(&request.target_world_id, true)?;
         let world = self
@@ -895,16 +906,10 @@ impl WorldManager {
             .ok_or("Unknown world")?;
         let receipt = validate_manifest(&request.manifest)?;
         validate_receipt(&request.manifest, &request.published)?;
-        if hash(&request.checkpoint_bytes) != request.manifest.checkpoint.sha256
-            || request.checkpoint_bytes.len() as u64 != request.manifest.checkpoint.bytes
-        {
-            return Err("Imported checkpoint blob mismatch".into());
-        }
-        persistence::validate_snapshot(&receipt, &request.checkpoint_bytes)?;
-        crate::instance::validate_pinned_checkpoint(
+        validate_checkpoint_import(
             &self.registry()?,
+            &request.manifest,
             &request.checkpoint_bytes,
-            &receipt.program,
         )?;
         if world.generation != request.expected_generation
             || world.instance.is_some()
@@ -940,7 +945,7 @@ impl WorldManager {
         )
     }
 }
-fn validate_receipt(manifest: &FrozenManifest, receipt: &ExternalReceipt) -> Result<()> {
+pub(super) fn validate_receipt(manifest: &FrozenManifest, receipt: &ExternalReceipt) -> Result<()> {
     validate_json(&receipt.receipt, MAX_MANIFEST_BYTES as usize)?;
     if encoded(&receipt.receipt)?.len() > MAX_MANIFEST_BYTES as usize
         || workers::digest(manifest)? != receipt.frozen_manifest_sha256
@@ -951,4 +956,20 @@ fn validate_receipt(manifest: &FrozenManifest, receipt: &ExternalReceipt) -> Res
         return Err("External receipt/manifest digest mismatch".into());
     }
     Ok(())
+}
+
+pub(super) fn validate_checkpoint_import(
+    registry: &crate::registry::ProcessorRegistry,
+    manifest: &FrozenManifest,
+    bytes: &[u8],
+) -> Result<()> {
+    let receipt = validate_manifest(manifest)?;
+    if bytes.len() > MAX_FROZEN_BYTES
+        || hash(bytes) != manifest.checkpoint.sha256
+        || bytes.len() as u64 != manifest.checkpoint.bytes
+    {
+        return Err("Imported checkpoint blob mismatch".into());
+    }
+    persistence::validate_snapshot(&receipt, bytes)?;
+    crate::instance::validate_pinned_checkpoint(registry, bytes, &receipt.program)
 }

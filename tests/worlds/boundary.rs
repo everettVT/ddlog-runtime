@@ -587,3 +587,183 @@ fn full_output_byte_limit_counts_combined_rows_across_page_boundaries() {
         serde_json::to_vec(&rows).unwrap().len()
     );
 }
+
+fn fork_request(m: &mut WorldManager, f: &Fixture) -> ddlog_runtime::worlds::ForkRequest {
+    let definition = external_definition(m);
+    let parent = m.create(definition.clone()).unwrap();
+    m.start(&parent).unwrap();
+    let k = key(&admit(m, request(&parent, 1, 1, "fork-source", None)));
+    let frozen = finished(m, &k);
+    let manifest: FrozenManifest =
+        serde_json::from_value(frozen["boundary"]["manifest"].clone()).unwrap();
+    let checkpoint_bytes = blob(m, &k, &manifest.checkpoint.sha256);
+    let published = receipt(&frozen);
+    m.confirm_boundary_published(k, published.clone()).unwrap();
+    assert!(commits(f) > 0);
+    ddlog_runtime::worlds::ForkRequest {
+        request_key: "fork-one".into(),
+        destination: json!({"world":"child","run":"one"}),
+        source_context: json!({"world":"parent","run":"one"}),
+        definition,
+        manifest,
+        published,
+        checkpoint_bytes,
+    }
+}
+fn await_fork(m: &mut WorldManager, child: &str) -> Value {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let status = m.status(child).unwrap();
+        if status["state"] != "starting" {
+            assert_eq!(status["state"], "running", "{status}");
+            return status;
+        }
+        assert!(std::time::Instant::now() < until);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+#[test]
+fn fork_reservation_survives_missing_child_and_rejects_conflicting_retries() {
+    use ddlog_runtime::worlds::ForkFault;
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let original = fork_request(&mut m, &f);
+    let before = commits(&f);
+    let mut corrupt = original.clone();
+    corrupt.checkpoint_bytes.push(b' ');
+    assert!(m.reserve_fork(corrupt).is_err());
+    assert!(!f.root.join("worlds/forks").exists());
+    assert!(m
+        .reserve_fork_with_fault(original.clone(), ForkFault::AfterReservation)
+        .is_err());
+    let path = fs::read_dir(f.root.join("worlds/forks"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let persisted: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let child = persisted["reservation"]["child_world_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(!f
+        .root
+        .join("worlds")
+        .join(&child)
+        .join("world.json")
+        .exists());
+    drop(m);
+    let mut m = f.manager();
+    let reservation = m.reserve_fork(original.clone()).unwrap();
+    assert_eq!(reservation.child_world_id, child);
+    assert_eq!(m.status(&child).unwrap()["generation"], 0);
+    assert_eq!(commits(&f), before);
+    for kind in 0..4 {
+        let mut changed = original.clone();
+        match kind {
+            0 => changed.destination = json!({"world":"other","run":"one"}),
+            1 => changed.request_key = "other-request".into(),
+            2 => changed.definition.label = "changed".into(),
+            _ => changed.source_context = json!({"world":"other-source"}),
+        }
+        assert!(m.reserve_fork(changed).is_err());
+    }
+    assert!(m.start_async(&child).is_err());
+    assert_eq!(m.reserve_fork(original).unwrap(), reservation);
+}
+#[test]
+fn fork_restore_gate_confirmation_fault_and_cold_reopen_do_not_replay_inputs() {
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let original = fork_request(&mut m, &f);
+    let r = m.reserve_fork(original.clone()).unwrap();
+    let child = r.child_world_id.clone();
+    let digest = r.lineage_sha256().unwrap();
+    assert!(m.confirm_fork_lineage(r.clone(), digest.clone()).is_err());
+    m.restore_fork_async(r.clone(), 0, original.checkpoint_bytes.clone())
+        .unwrap();
+    let running = await_fork(&mut m, &child);
+    assert_eq!(running["external_publication"]["fork"]["ready"], false);
+    let after_restore = commits(&f);
+    m.restore_fork_async(r.clone(), 0, original.checkpoint_bytes.clone())
+        .unwrap();
+    assert_eq!(commits(&f), after_restore);
+    let input = request(
+        &child,
+        1,
+        running["revision"].as_u64().unwrap(),
+        "child-one",
+        Some(&original.published.receipt_sha256),
+    );
+    assert!(m
+        .admit_boundary_async(serde_json::from_value(input.clone()).unwrap())
+        .is_err());
+    assert!(m.confirm_fork_lineage(r.clone(), "0".repeat(64)).is_err());
+    let target = f.root.join("worlds").join(&child).join("world.json");
+    let backup = target.with_extension("saved");
+    fs::rename(&target, &backup).unwrap();
+    fs::create_dir(&target).unwrap();
+    assert!(m.confirm_fork_lineage(r.clone(), digest.clone()).is_err());
+    assert!(m
+        .admit_boundary_async(serde_json::from_value(input.clone()).unwrap())
+        .is_err());
+    fs::remove_dir(&target).unwrap();
+    fs::rename(&backup, &target).unwrap();
+    drop(m);
+    let mut m = f.manager();
+    assert_eq!(m.reserve_fork(original.clone()).unwrap(), r);
+    assert_eq!(
+        m.status(&child).unwrap()["external_publication"]["fork"]["ready"],
+        false
+    );
+    m.restore_fork_async(r.clone(), 1, original.checkpoint_bytes.clone())
+        .unwrap();
+    let status = await_fork(&mut m, &child);
+    m.confirm_fork_lineage(r.clone(), digest.clone()).unwrap();
+    m.confirm_fork_lineage(r.clone(), digest.clone()).unwrap();
+    let k = key(&admit(
+        &mut m,
+        request(
+            &child,
+            2,
+            status["revision"].as_u64().unwrap(),
+            "child-one",
+            Some(&original.published.receipt_sha256),
+        ),
+    ));
+    let frozen = finished(&mut m, &k);
+    assert_eq!(
+        frozen["boundary"]["manifest"]["binding"]["parent_receipt_sha256"],
+        original.published.receipt_sha256
+    );
+    assert!(m
+        .restore_fork_async(r.clone(), 2, original.checkpoint_bytes.clone())
+        .is_err());
+    m.confirm_fork_lineage(r.clone(), digest.clone()).unwrap();
+    assert!(m.start_async(&child).is_err());
+    let before = commits(&f);
+    drop(m);
+    let mut m = f.manager();
+    assert_eq!(m.reserve_fork(original).unwrap(), r);
+    m.confirm_fork_lineage(r, digest).unwrap();
+    assert_eq!(lookup(&mut m, &k)["state"], "frozen");
+    assert_eq!(commits(&f), before);
+}
+#[test]
+fn missing_entire_fork_catalog_fails_closed() {
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let original = fork_request(&mut m, &f);
+    m.reserve_fork(original).unwrap();
+    drop(m);
+    fs::rename(f.root.join("worlds/forks"), f.root.join("retained-forks")).unwrap();
+    let error = WorldManager::new(
+        f.root.join("registry"),
+        f.root.join("worlds"),
+        f.root.join("build.py"),
+    )
+    .err()
+    .unwrap();
+    assert!(error.contains("no reservation catalog"), "{error}");
+}

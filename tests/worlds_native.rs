@@ -522,6 +522,14 @@ fn managed_json_restore_recomputes_public_state_and_preserves_process_capture() 
 #[test]
 #[ignore = "requires DDLOG_RUNTIME_NATIVE_BUILD and its operator-configured native toolchain"]
 fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
+    native_external_cut(false);
+}
+#[test]
+#[ignore = "requires DDLOG_RUNTIME_NATIVE_BUILD and its operator-configured native toolchain"]
+fn historical_fork_restores_selected_fixed_point_and_retracts_independently() {
+    native_external_cut(true);
+}
+fn native_external_cut(fork: bool) {
     use ddlog_runtime::worlds::{
         BoundaryKey, ExternalPublicationPolicy, ExternalReceipt, FrozenManifest,
     };
@@ -551,9 +559,10 @@ fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
         max_rows: 1000,
         max_bytes: 1024 * 1024,
     });
-    let id = m.create(definition).unwrap();
+    let id = m.create(definition.clone()).unwrap();
     m.start(&id).unwrap();
     let apply = |m: &mut WorldManager,
+                 id: &str,
                  generation: u64,
                  revision: u64,
                  key: &str,
@@ -582,6 +591,7 @@ fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
     };
     let (key, frozen) = apply(
         &mut m,
+        &id,
         1,
         1,
         "first",
@@ -640,6 +650,7 @@ fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
     assert!(live["instance"]["build"]["native_sha256"].is_string());
     let (_, empty) = apply(
         &mut m,
+        &id,
         2,
         2,
         "retract",
@@ -648,6 +659,52 @@ fn external_cut_freezes_real_fixed_point_restores_and_retracts() {
         {"op":"delete","predicate":"edge","values":[1,2]}, {"op":"delete","predicate":"edge","values":[2,3]}]),
     );
     assert_eq!(empty["boundary"]["manifest"]["outputs"][0]["rows"], 0);
+    if fork {
+        use ddlog_runtime::worlds::ForkRequest;
+        let request = ForkRequest {
+            request_key: "native-fork".into(),
+            destination: json!({"world":"child","run":"one"}),
+            source_context: json!({"world":"ecs","run":"run-a"}),
+            definition,
+            manifest: manifest.clone(),
+            published: ack.clone(),
+            checkpoint_bytes: checkpoint.clone(),
+        };
+        let reservation = m.reserve_fork(request.clone()).unwrap();
+        let child = &reservation.child_world_id;
+        m.restore_fork_async(reservation.clone(), 0, checkpoint)
+            .unwrap();
+        let child_live = wait_until(&mut m, child, "historical fork restore", |s| {
+            s["state"] != "starting"
+        });
+        assert_eq!(child_live["state"], "running", "{child_live}");
+        assert_eq!(child_live["external_publication"]["fork"]["ready"], false);
+        assert_eq!(
+            child_live["persistence"]["restored_from"]["origin"]["world_id"],
+            id
+        );
+        let lineage = reservation.lineage_sha256().unwrap();
+        m.confirm_fork_lineage(reservation.clone(), lineage)
+            .unwrap();
+        assert_eq!(m.reserve_fork(request).unwrap(), reservation);
+        let (_, fork_empty) = apply(
+            &mut m,
+            child,
+            1,
+            child_live["revision"].as_u64().unwrap(),
+            "child-retract",
+            Some(&ack.receipt_sha256),
+            json!([
+            {"op":"delete","predicate":"edge","values":[1,2]}, {"op":"delete","predicate":"edge","values":[2,3]}]),
+        );
+        assert_eq!(fork_empty["boundary"]["manifest"]["outputs"][0]["rows"], 0);
+        assert_eq!(
+            fork_empty["boundary"]["manifest"]["binding"]["parent_receipt_sha256"],
+            ack.receipt_sha256
+        );
+        assert_eq!(m.status(&id).unwrap()["generation"], 2);
+    }
+
     drop(m);
     eprintln!(
         "native external-cut evidence retained at {}",

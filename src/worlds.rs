@@ -25,11 +25,14 @@ use persistence::{atomic_json, persist, persist_if_changed};
 mod admission;
 #[path = "world_boundary.rs"]
 mod boundary;
+#[path = "world_fork.rs"]
+mod fork;
 pub use boundary::{
     BoundCheckpointRestore, BoundaryAdmission, BoundaryKey, ExternalPublicationPolicy,
     ExternalReceipt, FrozenBlob, FrozenBlobPage, FrozenBlobRead, FrozenManifest, FrozenOutput,
     PublicationBinding,
 };
+pub use fork::{ForkFault, ForkRequest, ForkReservation};
 #[path = "world_storage.rs"]
 mod storage;
 #[path = "world_workers.rs"]
@@ -153,6 +156,8 @@ struct World {
     persistence: persistence::Persistence,
     #[serde(skip)]
     persistence_dirty: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fork: Option<fork::State>,
     #[serde(default)]
     admission: admission::AdmissionState,
     #[serde(default)]
@@ -300,7 +305,7 @@ impl WorldManager {
             persist_if_changed(&build_root, &id, &mut world)?;
             worlds.insert(id, world);
         }
-        Ok(Self {
+        let mut manager = Self {
             registry_root,
             build_root,
             driver,
@@ -309,7 +314,9 @@ impl WorldManager {
             storage_configuration: storage::Configuration::default(),
             _owner_lock: owner_lock,
             shutdown: WorldShutdown::default(),
-        })
+        };
+        manager.recover_forks()?;
+        Ok(manager)
     }
     pub fn shutdown_handle(&self) -> WorldShutdown {
         self.shutdown.clone()
@@ -706,7 +713,10 @@ impl WorldManager {
         metadata.validate()?;
         Ok(Some(metadata))
     }
-    pub fn create(&mut self, definition: WorldDefinition) -> Result<String, String> {
+    fn validate_world_definition(
+        &self,
+        definition: &WorldDefinition,
+    ) -> Result<ProcessorVersion, String> {
         if definition.label.trim().is_empty() || definition.label.len() > 256 {
             return Err("World label must contain 1–256 bytes".into());
         }
@@ -722,43 +732,53 @@ impl WorldManager {
             &definition.processor.processor_id,
             Some(&definition.processor.version),
         )?;
-        boundary::validate_definition(&definition, &registry, &record)?;
+        boundary::validate_definition(definition, &registry, &record)?;
         if definition.purpose == "test" {
             if definition.scenarios.is_empty() {
                 return Err("A test world requires at least one scenario".into());
             }
             validate_scenarios(&public_relations(&record)?, &definition.scenarios)?;
         }
+        Ok(record)
+    }
+    fn new_world(
+        &self,
+        definition: WorldDefinition,
+        record: &ProcessorVersion,
+    ) -> Result<World, String> {
+        Ok(World {
+            schema_version: SCHEMA_VERSION,
+            definition,
+            instance: None,
+            state: "created".into(),
+            error: None,
+            generation: 0,
+            metadata: self.world_metadata(record)?,
+            telemetry: None,
+            tailer: None,
+            reader: None,
+            capture_generation: None,
+            history: vec![],
+            persistence: persistence::Persistence::default(),
+            persistence_dirty: false,
+            fork: None,
+            admission: admission::AdmissionState::default(),
+            workers: Vec::new(),
+            pending: None,
+            boundary_job: None,
+            stop_requested: false,
+            test: None,
+            test_progress: None,
+        })
+    }
+    pub fn create(&mut self, definition: WorldDefinition) -> Result<String, String> {
+        let record = self.validate_world_definition(&definition)?;
+        let world = self.new_world(definition, &record)?;
         // Exclusive build-directory creation gives every manager/generation its own
         // identity and prevents two owners from sharing native build artifacts.
         let id = crate::bounded::owner_identity();
         std::fs::create_dir(self.build_root.join(&id)).map_err(|e| e.to_string())?;
-        self.worlds.insert(
-            id.clone(),
-            World {
-                schema_version: SCHEMA_VERSION,
-                definition,
-                instance: None,
-                state: "created".into(),
-                error: None,
-                generation: 0,
-                metadata: self.world_metadata(&record)?,
-                telemetry: None,
-                tailer: None,
-                reader: None,
-                capture_generation: None,
-                history: vec![],
-                persistence: persistence::Persistence::default(),
-                persistence_dirty: false,
-                admission: admission::AdmissionState::default(),
-                workers: Vec::new(),
-                pending: None,
-                boundary_job: None,
-                stop_requested: false,
-                test: None,
-                test_progress: None,
-            },
-        );
+        self.worlds.insert(id.clone(), world);
         if let Err(error) = persist(&self.build_root, &id, self.worlds.get_mut(&id).unwrap()) {
             // The reply and the inventory must agree: a world whose record was
             // never written is not inventory, and its directory has no world.json.
@@ -877,6 +897,7 @@ impl WorldManager {
         let controls = self.shutdown.controls.clone();
         self.ensure_starting_allowed()?;
         let world = self.worlds.get_mut(id).ok_or("Unknown world")?;
+        fork::guard_start(world, restore.as_ref())?;
         boundary::guard_start(world, restore.as_ref())?;
         if world.instance.is_some() || world.pending.is_some() {
             return Err("World already owns an instance; stop it before restarting".into());
@@ -1201,7 +1222,8 @@ impl WorldManager {
             "test":world.test});
         if world.definition.external_publication.is_some() {
             status["external_publication"] = json!({"pending":world.admission.external_pending,
-                "head":world.admission.external_head,"busy":world.boundary_job.is_some()});
+                "head":world.admission.external_head,"busy":world.boundary_job.is_some(),
+                "fork":world.fork});
         }
         if let Some(entries) = status["persistence"]["checkpoints"].as_array_mut() {
             for entry in entries {

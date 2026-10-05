@@ -207,3 +207,43 @@ the exact receipt, and prove failure/restart recovery through this hosted owner.
 The suspended Archetype duplicate manager must not be shipped. Thin Python and
 authenticated API/MCP routes, fork/artifact contracts and consumer migration follow
 that integration. No upstream publication or dependent-product release is implied.
+
+## Historical forks
+
+`reserve_fork(ForkRequest)` verifies the exact source manifest, external receipt,
+checkpoint bytes and pinned program before child effects. Its bounded manager
+catalog binds a request key, source context, destination identity, definition and
+source evidence to one child ID. The reservation is fsynced before `world.json`;
+reopen materializes a missing child record under that same ID, without activation.
+Exact retries return the reservation. Changed contents or another request for the
+same destination reject. The catalog admits at most 1024 retained reservations.
+Destination identity must identify the destination alone, independently of the
+source or request key. Trusted embedding chooses both contexts, never paths.
+
+The child's first record carries an unconfirmed fork gate, separate from input
+admission state. Ordinary activation and input admission reject until the exact
+lineage acknowledgment is durable. `restore_fork_async(reservation, generation,
+checkpoint_bytes)` reuses the existing bound restore worker and retains original
+checkpoint provenance. Its lost acknowledgment is a lookup at the original
+expected generation. A stopped or interrupted candidate requires a new explicit
+generation-fenced restore; reservation retry never starts work. Once any child
+input admission exists, even unresolved, the historical source cannot replace it.
+
+The embedding stores an immutable analytical origin binding the complete
+reservation and unchanged source proof. `ForkReservation::lineage_sha256()` is
+its canonical lineage identity. `confirm_fork_lineage` acknowledges that exact
+identity only after the source restore completed. It persists readiness before
+allowing input. Persistence failure keeps the in-memory gate closed; exact retry
+repeats the durable fence. An already-confirmed acknowledgment remains idempotent
+after later child inputs or restores. The lineage identity does not replace the
+source external receipt: the first child boundary still names that source receipt
+as its external parent. Subsequent child receipts advance the ordinary head.
+
+These operations are trusted Rust embedding ports. The embedding must prove
+actual analytical origin durability before confirmation; the native manager does
+not inspect the embedding's storage. No new worker, input ledger, execution
+owner, automatic restore retry or input replay is introduced. Tests inject the
+reservation-before-child crash, confirmation write failure and missing catalog,
+and exercise cold recovery and source-parent identity. The separately ignored
+`historical_fork_restores_selected_fixed_point_and_retracts_independently` test
+requires the real compiler. An ignored test is not native acceptance evidence.

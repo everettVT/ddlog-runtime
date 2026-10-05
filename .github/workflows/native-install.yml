@@ -5,6 +5,16 @@ on:
     paths:
       - 'native/**'
       - 'src/checkpoint.rs'
+      - 'src/world*.rs'
+      - 'src/instance.rs'
+      - 'src/instance_*.rs'
+      - 'src/backend*.rs'
+      - 'src/composition*.rs'
+      - 'src/lowering*.rs'
+      - 'crates/syntax/**'
+      - 'tests/worlds*.rs'
+      - 'tests/worlds/**'
+      - 'tests/fixtures/**'
       - 'src/iceberg_checkpoint.rs'
       - 'examples/iceberg_recovery.rs'
       - 'examples/support/**'
@@ -34,6 +44,12 @@ jobs:
         run: |
           source "$RUNNER_TEMP/ddlog-native/env.sh"
           python3 scripts/test-native-install.py "$RUNNER_TEMP/native-smoke"
+      - name: Native external cut and historical fork contracts
+        run: |
+          source "$RUNNER_TEMP/ddlog-native/env.sh"
+          export DDLOG_RUNTIME_NATIVE_BUILD="$GITHUB_WORKSPACE/scripts/build-ddlog.sh"
+          cargo test --locked --test worlds_native external_cut_freezes_real_fixed_point_restores_and_retracts -- --ignored --nocapture
+          cargo test --locked --test worlds_native historical_fork_restores_selected_fixed_point_and_retracts_independently -- --ignored --nocapture
       - name: Build runtime Iceberg acceptance
         run: cargo build --locked --features iceberg --example iceberg_recovery
       - name: Native Iceberg checkpoint across processes
