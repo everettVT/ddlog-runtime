@@ -36,6 +36,9 @@ pub use boundary::{
 };
 pub use creation::{CreationRequest, CreationReservation, LogicalDestination, ResolvedCreation};
 pub use fork::{ForkFault, ForkRequest, ForkReservation};
+#[cfg(unix)]
+#[path = "world_sampling.rs"]
+mod sampling;
 #[path = "world_storage.rs"]
 mod storage;
 #[path = "world_workers.rs"]
@@ -1635,25 +1638,14 @@ pub fn sample_process(pid: Option<u32>) -> Value {
     };
     #[cfg(unix)]
     {
-        let output = std::process::Command::new("/bin/ps")
+        let mut command = std::process::Command::new("/bin/ps");
+        command
             .args(["-p", &pid.to_string(), "-o", "%cpu=", "-o", "rss="])
-            .env("LC_ALL", "C")
-            .output();
-        if let Ok(output) = output {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                let mut fields = text.split_whitespace();
-                if let (Some(cpu), Some(rss)) = (
-                    fields.next().and_then(|s| s.parse::<f64>().ok()),
-                    fields.next().and_then(|s| s.parse::<u64>().ok()),
-                ) {
-                    if cpu.is_finite() && cpu >= 0.0 {
-                        result["state"] = json!("available");
-                        result["cpu_percent"] = json!(cpu);
-                        result["resident_bytes"] = json!(rss.saturating_mul(1024));
-                    }
-                }
-            }
+            .env("LC_ALL", "C");
+        if let Some((cpu, rss)) = sampling::sample(&mut command) {
+            result["state"] = json!("available");
+            result["cpu_percent"] = json!(cpu);
+            result["resident_bytes"] = json!(rss);
         }
     }
     #[cfg(not(unix))]

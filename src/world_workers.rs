@@ -522,7 +522,7 @@ impl Drop for OwnedChild {
 }
 
 #[cfg(unix)]
-fn nonblocking(file: &impl std::os::fd::AsRawFd) -> Result<()> {
+pub(super) fn nonblocking(file: &impl std::os::fd::AsRawFd) -> Result<()> {
     let fd = file.as_raw_fd();
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
