@@ -25,6 +25,8 @@ use persistence::{atomic_json, persist, persist_if_changed};
 mod admission;
 #[path = "world_boundary.rs"]
 mod boundary;
+#[path = "world_creation.rs"]
+mod creation;
 #[path = "world_fork.rs"]
 mod fork;
 pub use boundary::{
@@ -32,6 +34,7 @@ pub use boundary::{
     ExternalReceipt, FrozenBlob, FrozenBlobPage, FrozenBlobRead, FrozenManifest, FrozenOutput,
     PublicationBinding,
 };
+pub use creation::{CreationRequest, CreationReservation, LogicalDestination, ResolvedCreation};
 pub use fork::{ForkFault, ForkRequest, ForkReservation};
 #[path = "world_storage.rs"]
 mod storage;
@@ -158,6 +161,8 @@ struct World {
     persistence_dirty: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fork: Option<fork::State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    creation: Option<creation::State>,
     #[serde(default)]
     admission: admission::AdmissionState,
     #[serde(default)]
@@ -762,6 +767,7 @@ impl WorldManager {
             persistence: persistence::Persistence::default(),
             persistence_dirty: false,
             fork: None,
+            creation: None,
             admission: admission::AdmissionState::default(),
             workers: Vec::new(),
             pending: None,

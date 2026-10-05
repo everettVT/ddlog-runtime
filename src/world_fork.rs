@@ -6,11 +6,8 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::PathBuf;
 
 type Result<T> = std::result::Result<T, String>;
-const MAX_RECORD: u64 = 2 * 1024 * 1024;
-const MAX_RESERVATIONS: usize = 1024;
 
 /// Deterministic durability fault seam. Normal callers use `reserve_fork`.
 #[derive(Clone, Copy, Default)]
@@ -22,7 +19,7 @@ pub enum ForkFault {
     ChildDirectorySync,
 }
 impl ForkFault {
-    fn sync_child_directory(self, path: &std::path::Path) -> std::io::Result<()> {
+    pub(super) fn sync_child_directory(self, path: &std::path::Path) -> std::io::Result<()> {
         if matches!(self, Self::ChildDirectorySync) {
             return Err(std::io::Error::other(
                 "Injected child directory sync failure",
@@ -32,7 +29,7 @@ impl ForkFault {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ForkRequest {
     pub request_key: String,
@@ -64,12 +61,12 @@ impl ForkReservation {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Record {
-    schema_version: u32,
-    reservation: ForkReservation,
-    definition: WorldDefinition,
-    manifest: FrozenManifest,
-    published: ExternalReceipt,
+pub(super) struct Record {
+    pub schema_version: u32,
+    pub reservation: ForkReservation,
+    pub definition: WorldDefinition,
+    pub manifest: FrozenManifest,
+    pub published: ExternalReceipt,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -79,12 +76,14 @@ pub(super) struct State {
     pub ready: bool,
 }
 pub(super) fn guard_admission(world: &World) -> Result<()> {
+    super::creation::guard(world)?;
     if world.fork.as_ref().is_some_and(|f| !f.ready) {
         return Err("Fork lineage is not durably confirmed".into());
     }
     Ok(())
 }
 pub(super) fn guard_start(world: &World, restore: Option<&persistence::Restore>) -> Result<()> {
+    super::creation::guard(world)?;
     if let Some(fork) = &world.fork {
         if !fork.ready && restore.is_none_or(|r| r.receipt != fork.source) {
             return Err("Unconfirmed fork requires its exact reserved checkpoint".into());
@@ -93,7 +92,7 @@ pub(super) fn guard_start(world: &World, restore: Option<&persistence::Restore>)
     Ok(())
 }
 impl Record {
-    fn validate(&self) -> Result<persistence::Receipt> {
+    pub(super) fn validate(&self) -> Result<persistence::Receipt> {
         workers::token(&self.reservation.request_key)?;
         persistence::component(&self.reservation.child_world_id)?;
         let source = boundary::validate_manifest(&self.manifest)?;
@@ -133,215 +132,20 @@ fn request_digest(
     )
 }
 impl WorldManager {
-    fn fork_path(&self, request_key: &str) -> Result<PathBuf> {
-        workers::token(request_key)?;
-        Ok(self
-            .build_root
-            .join("forks")
-            .join(format!("{}.json", workers::digest(&json!(request_key))?)))
-    }
     fn read_fork(&self, request_key: &str) -> Result<Record> {
-        let record: Record = serde_json::from_slice(&persistence::read_bounded(
-            &self.fork_path(request_key)?,
-            MAX_RECORD,
-        )?)
-        .map_err(|e| e.to_string())?;
-        record.validate()?;
-        if record.reservation.request_key != request_key {
-            return Err("Fork key mismatch".into());
-        }
-        Ok(record)
-    }
-    fn materialization_path(&self, request_key: &str) -> Result<PathBuf> {
-        Ok(self.fork_path(request_key)?.with_extension("materialized"))
-    }
-    fn fence_materialization(
-        &self,
-        record: &Record,
-        world: &World,
-        fault: ForkFault,
-    ) -> Result<()> {
-        // The retained rename may have succeeded while its directory sync
-        // failed. Repeat these fences without rewriting the original record,
-        // even when recovery already loaded it or the marker already exists.
-        let child_dir = self.build_root.join(&record.reservation.child_world_id);
-        std::fs::File::open(child_dir.join("world.json"))
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
-        fault
-            .sync_child_directory(&child_dir)
-            .map_err(|e| e.to_string())?;
-        std::fs::File::open(&self.build_root)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
-        let marker = self.materialization_path(&record.reservation.request_key)?;
-        if marker.exists() {
-            let saved: ForkReservation =
-                serde_json::from_slice(&persistence::read_bounded(&marker, MAX_RECORD)?)
-                    .map_err(|e| e.to_string())?;
-            if saved != record.reservation {
-                return Err("Fork materialization identity changed".into());
-            }
-            for path in [marker.as_path(), marker.parent().unwrap()] {
-                std::fs::File::open(path)
-                    .and_then(|f| f.sync_all())
-                    .map_err(|e| e.to_string())?;
-            }
-        } else {
-            if world.generation != 0
-                || world.state != "created"
-                || !world.admission.records.is_empty()
-                || world.admission.external_pending.is_some()
-                || world.admission.external_head.is_some()
-                || world.fork.as_ref().is_none_or(|f| f.ready)
-                || world.persistence.restore_requested.is_some()
-                || world.persistence.restored_from.is_some()
-            {
-                return Err("Progressed fork has no materialization fence".into());
-            }
-            persistence::atomic_json(
-                &marker,
-                &serde_json::to_value(&record.reservation).map_err(|e| e.to_string())?,
-            )?;
-        }
-        Ok(())
-    }
-    fn materialize_fork(&mut self, record: &Record, fault: ForkFault) -> Result<()> {
-        // Repeat every durability fence after an ambiguous rename/fsync result.
-        let path = self.fork_path(&record.reservation.request_key)?;
-        for path in [
-            path.as_path(),
-            path.parent().unwrap(),
-            self.build_root.as_path(),
-        ] {
-            std::fs::File::open(path)
-                .and_then(|f| f.sync_all())
-                .map_err(|e| e.to_string())?;
-        }
-        let source = record.validate()?;
-        let id = &record.reservation.child_world_id;
-        if let Some(world) = self.worlds.get(id) {
-            if world
-                .fork
-                .as_ref()
-                .is_none_or(|f| f.reservation != record.reservation || f.source != source)
-                || serde_json::to_value(&world.definition).map_err(|e| e.to_string())?
-                    != serde_json::to_value(&record.definition).map_err(|e| e.to_string())?
-            {
-                return Err("Reserved fork child changed".into());
-            }
-            return self.fence_materialization(record, world, fault);
-        }
-        let dir = self.build_root.join(id);
-        let world_path = dir.join("world.json");
-        if !world_path.exists() {
-            if self
-                .materialization_path(&record.reservation.request_key)?
-                .exists()
-            {
-                return Err("Materialized fork has lost its world control record".into());
-            }
-            if dir.exists() {
-                for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
-                    if entry.map_err(|e| e.to_string())?.file_name() != "world.json.tmp" {
-                        return Err("Fork progress evidence without world control record".into());
-                    }
-                }
-            }
-        } else {
-            // A prior write may have reached disk before its acknowledgment.
-            // Preserve it; never reconstruct defaults over a retained record.
-            let world: World =
-                serde_json::from_slice(&persistence::read_bounded(&world_path, MAX_RECORD)?)
-                    .map_err(|e| e.to_string())?;
-            if world.schema_version != super::SCHEMA_VERSION
-                || world
-                    .fork
-                    .as_ref()
-                    .is_none_or(|f| f.reservation != record.reservation || f.source != source)
-                || serde_json::to_value(&world.definition).map_err(|e| e.to_string())?
-                    != serde_json::to_value(&record.definition).map_err(|e| e.to_string())?
-            {
-                return Err("Reserved fork child changed".into());
-            }
-            self.fence_materialization(record, &world, fault)?;
-            self.worlds.insert(id.clone(), world);
-            return Ok(());
-        }
-        let pin = self.validate_world_definition(&record.definition)?;
-        let mut world = self.new_world(record.definition.clone(), &pin)?;
-        world.fork = Some(State {
-            reservation: record.reservation.clone(),
-            source,
-            ready: false,
-        });
-        persistence::private_dir(&dir)?;
-        std::fs::File::open(&self.build_root)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
-        // Never remove a reserved identity after an ambiguous persistence result.
-        persistence::persist_with_directory_sync(&self.build_root, id, &mut world, |dir| {
-            fault.sync_child_directory(dir)
-        })?;
-        if matches!(fault, ForkFault::AfterChildRecord) {
-            return Err("Injected failure before materialization fence".into());
-        }
-        self.fence_materialization(record, &world, fault)?;
-        self.worlds.insert(id.clone(), world);
-        Ok(())
+        self.read_creation(request_key)?
+            .fork()
+            .cloned()
+            .ok_or_else(|| "Creation is not a fork".into())
     }
     pub(super) fn recover_forks(&mut self) -> Result<()> {
-        let dir = self.build_root.join("forks");
-        if !dir.exists() {
-            if self.worlds.values().any(|w| w.fork.is_some()) {
-                return Err("Fork worlds have no reservation catalog".into());
-            }
-            return Ok(());
-        }
-        persistence::existing_dir(&dir)?;
-        let mut destinations = std::collections::BTreeSet::new();
-        let mut children = std::collections::BTreeSet::new();
-        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
-            let path = entry.map_err(|e| e.to_string())?.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let record: Record =
-                serde_json::from_slice(&persistence::read_bounded(&path, MAX_RECORD)?)
-                    .map_err(|e| e.to_string())?;
-            record.validate()?;
-            if path != self.fork_path(&record.reservation.request_key)?
-                || !destinations.insert(workers::digest(&record.reservation.destination)?)
-                || !children.insert(record.reservation.child_world_id.clone())
-            {
-                return Err("Conflicting fork reservation catalog".into());
-            }
-            if children.len() > MAX_RESERVATIONS {
-                return Err("Fork reservation catalog limit".into());
-            }
-            self.materialize_fork(&record, ForkFault::None)?;
-        }
-        for world in self.worlds.values() {
-            if world
-                .fork
-                .as_ref()
-                .is_some_and(|f| !children.contains(&f.reservation.child_world_id))
-            {
-                return Err("Fork world has no durable reservation".into());
-            }
-        }
-        Ok(())
+        self.recover_creations()
     }
-    /// Fully validate the immutable source before any child/catalog effects.
-    /// Repeating a key only materializes the same reserved child; never starts it.
-    pub fn reserve_fork(&mut self, request: ForkRequest) -> Result<ForkReservation> {
-        self.reserve_fork_with_fault(request, ForkFault::None)
-    }
-    pub fn reserve_fork_with_fault(
-        &mut self,
+    pub(super) fn checked_fork_record(
+        &self,
         request: ForkRequest,
-        fault: ForkFault,
-    ) -> Result<ForkReservation> {
+        child: String,
+    ) -> Result<Record> {
         workers::token(&request.request_key)?;
         self.validate_world_definition(&request.definition)?;
         let source = boundary::validate_manifest(&request.manifest)?;
@@ -356,15 +160,12 @@ impl WorldManager {
         {
             return Err("Fork definition does not match source".into());
         }
-        // Reuse the context depth/byte contract; no arbitrary unbounded metadata.
-        boundary::validate_binding(&super::PublicationBinding {
-            context: request.destination.clone(),
-            parent_receipt_sha256: None,
-        })?;
-        boundary::validate_binding(&super::PublicationBinding {
-            context: request.source_context.clone(),
-            parent_receipt_sha256: None,
-        })?;
+        for context in [&request.destination, &request.source_context] {
+            boundary::validate_binding(&super::PublicationBinding {
+                context: context.clone(),
+                parent_receipt_sha256: None,
+            })?;
+        }
         let digest = request_digest(
             &request.request_key,
             &request.destination,
@@ -373,59 +174,58 @@ impl WorldManager {
             &request.manifest,
             &request.published,
         )?;
-        let path = self.fork_path(&request.request_key)?;
-        let record = if path.exists() {
-            let prior = self.read_fork(&request.request_key)?;
-            if prior.reservation.request_sha256 != digest {
+        let record = Record {
+            schema_version: 1,
+            reservation: ForkReservation {
+                request_key: request.request_key,
+                request_sha256: digest,
+                child_world_id: child,
+                destination: request.destination,
+                source_context: request.source_context,
+                source_manifest_sha256: request.published.frozen_manifest_sha256.clone(),
+                source_receipt_sha256: request.published.receipt_sha256.clone(),
+            },
+            definition: request.definition,
+            manifest: request.manifest,
+            published: request.published,
+        };
+        record.validate()?;
+        Ok(record)
+    }
+    /// Legacy V1 wrapper over the shared catalog and materialization primitive.
+    pub fn reserve_fork(&mut self, request: ForkRequest) -> Result<ForkReservation> {
+        self.reserve_fork_with_fault(request, ForkFault::None)
+    }
+    pub fn reserve_fork_with_fault(
+        &mut self,
+        request: ForkRequest,
+        fault: ForkFault,
+    ) -> Result<ForkReservation> {
+        let candidate = self.checked_fork_record(request, crate::bounded::owner_identity())?;
+        let key = &candidate.reservation.request_key;
+        let record = if self
+            .creation_path(key)?
+            .try_exists()
+            .map_err(|e| e.to_string())?
+        {
+            let prior = self.read_creation(key)?;
+            let super::creation::CatalogRecord::Legacy(legacy) = &prior else {
+                return Err("Request key already binds logical creation".into());
+            };
+            if legacy.reservation.request_sha256 != candidate.reservation.request_sha256 {
                 return Err("Fork request key identifies different contents".into());
             }
             prior
         } else {
-            self.ensure_starting_allowed()?;
-            self.recover_forks()?;
-            if self.worlds.values().filter(|w| w.fork.is_some()).count() >= MAX_RESERVATIONS {
-                return Err("Fork reservation catalog limit".into());
-            }
-            if self.worlds.values().any(|w| {
-                w.fork
-                    .as_ref()
-                    .is_some_and(|f| f.reservation.destination == request.destination)
-            }) {
-                return Err("Fork destination already reserved".into());
-            }
-            let record = Record {
-                schema_version: 1,
-                reservation: ForkReservation {
-                    request_key: request.request_key,
-                    request_sha256: digest,
-                    child_world_id: crate::bounded::owner_identity(),
-                    destination: request.destination,
-                    source_context: request.source_context,
-                    source_manifest_sha256: request.published.frozen_manifest_sha256.clone(),
-                    source_receipt_sha256: request.published.receipt_sha256.clone(),
-                },
-                definition: request.definition,
-                manifest: request.manifest,
-                published: request.published,
-            };
-            record.validate()?;
-            let value = serde_json::to_value(&record).map_err(|e| e.to_string())?;
-            if serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() as u64 > MAX_RECORD {
-                return Err("Fork reservation exceeds size limit".into());
-            }
-            persistence::private_dir(path.parent().unwrap())?;
-            // fsync parent creation before relying on a durable reservation.
-            std::fs::File::open(&self.build_root)
-                .and_then(|f| f.sync_all())
-                .map_err(|e| e.to_string())?;
-            persistence::atomic_json(&path, &value)?;
+            let record = super::creation::CatalogRecord::Legacy(Box::new(candidate));
+            self.save_creation(&record)?;
             record
         };
         if matches!(fault, ForkFault::AfterReservation) {
             return Err("Injected failure after durable fork reservation".into());
         }
-        self.materialize_fork(&record, fault)?;
-        Ok(record.reservation)
+        self.materialize_creation(&record, fault)?;
+        Ok(record.fork().unwrap().reservation.clone())
     }
     /// Explicit generation-fenced restore, separate from reservation retries.
     /// A duplicate in-flight/completed restore is a lookup, never input replay.

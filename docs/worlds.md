@@ -6,6 +6,9 @@ owner-private directories. An exclusive advisory lock rejects another manager fo
 the same build root. Clients attach to the existing owner; constructing another
 manager is not discovery. Different stores can deliberately own different worlds.
 
+Trusted embedders can use the [logical creation ports](logical-creation.md) to
+reserve and resolve stable program/world names through these same owners.
+
 The stdio protocol is newline-delimited JSON, capped at 1 MiB per request.
 Requests have `operation` and `args`; replies have `ok` and either `result` or
 `error`. There is no network listener, arbitrary host-process discovery, or daemon

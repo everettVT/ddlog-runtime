@@ -20,6 +20,12 @@ use super::composition::{
 pub type Result<T> = std::result::Result<T, String>;
 const FORMAT_VERSION: u32 = 1;
 
+#[path = "registry_logical.rs"]
+mod logical;
+pub use logical::{
+    LogicalProgram, LogicalProgramBinding, LogicalProgramFault, LogicalProgramRequest,
+};
+
 /// Exact registered operation selected when the definition was authored. A host
 /// must compare all fields to its trusted operation registry before installing it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,6 +120,10 @@ pub struct ProcessorVersion {
     pub validation: DefinitionValidation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub composition: Option<CompositionResolution>,
+    /// Initial logical publication's association, retained in canonical version
+    /// authority so losing its preparation cannot authorize a second identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logical_binding: Option<LogicalProgramBinding>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -1135,6 +1145,7 @@ impl ProcessorRegistry {
                     definition,
                     validation: DefinitionValidation::checked(),
                     composition,
+                    logical_binding: None,
                 };
                 atomic_json(&path, &record, false)?;
                 record
@@ -1175,6 +1186,9 @@ fn verify_envelope(record: &ProcessorVersion, processor_id: &str, selected: &str
         return Err("Invalid processor version envelope; inspect the requested identity/version and record metadata and reconcile before continuing".into());
     }
     validate_lineage(&record.lineage)?;
+    if let Some(binding) = &record.logical_binding {
+        binding.validate()?;
+    }
     let hash = definition_hash(&record.definition)?;
     if record.content_sha256 != hash || record.version != format!("sha256:{hash}") {
         return Err("Processor definition content hash mismatch; inspect the exact version file and reconcile its authored definition before continuing".into());

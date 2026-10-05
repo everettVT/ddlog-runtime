@@ -904,6 +904,7 @@ impl WorldManager {
             .worlds
             .get(&request.target_world_id)
             .ok_or("Unknown world")?;
+        super::creation::guard(world)?;
         let receipt = validate_manifest(&request.manifest)?;
         validate_receipt(&request.manifest, &request.published)?;
         validate_checkpoint_import(

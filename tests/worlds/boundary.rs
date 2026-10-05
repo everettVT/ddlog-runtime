@@ -43,6 +43,291 @@ fn external_policy_rejects_legacy_mutation_before_any_native_command() {
 }
 
 use ddlog_runtime::worlds::{BoundaryKey, ExternalReceipt, FrozenManifest};
+
+fn fresh_creation(m: &WorldManager) -> ddlog_runtime::worlds::CreationRequest {
+    ddlog_runtime::worlds::CreationRequest {
+        request_key: "logical-one".into(),
+        destination: ddlog_runtime::worlds::LogicalDestination {
+            resource: "world-a".into(),
+            world: "logical".into(),
+            run: "one".into(),
+        },
+        definition: external_definition(m),
+        binding: json!({"components":["echo"]}),
+        fork: None,
+    }
+}
+#[test]
+fn logical_fresh_creation_recovers_each_fence_and_requires_context_before_activation() {
+    use ddlog_runtime::worlds::ForkFault;
+    for fault in [
+        ForkFault::AfterReservation,
+        ForkFault::AfterChildRecord,
+        ForkFault::ChildDirectorySync,
+    ] {
+        let f = Fixture::new();
+        let mut m = f.manager();
+        let request = fresh_creation(&m);
+        assert!(m.lookup_creation(&request.destination).unwrap().is_none());
+        assert!(!f.root.join("worlds/forks").exists());
+        assert!(m
+            .reserve_creation_with_fault(request.clone(), fault)
+            .is_err());
+        assert!(!f.root.join("commands").exists());
+        drop(m);
+        let mut m = f.manager();
+        let resolved = m.resolve_creation(&request.destination).unwrap();
+        assert!(!resolved.context_confirmed);
+        assert!(resolved.context_id.is_none());
+        let reservation = resolved.reservation;
+        assert_eq!(m.reserve_creation(request.clone()).unwrap(), reservation);
+        let id = &reservation.world_id;
+        assert_eq!(m.status(id).unwrap()["generation"], 0);
+        assert!(m.start_async(id).is_err());
+        for variant in 0..5 {
+            let mut changed = request.clone();
+            match variant {
+                0 => changed.request_key = "other".into(),
+                1 => changed.binding = json!({"components":["different"]}),
+                2 => changed.destination.resource = "alias".into(),
+                3 => changed.destination.world = "other".into(),
+                _ => changed.definition.label = "changed".into(),
+            }
+            assert!(m.reserve_creation(changed).is_err());
+        }
+        assert_eq!(inventory(&mut m)["worlds"].as_array().unwrap().len(), 1);
+        let ready = m
+            .confirm_creation_context(reservation.clone(), "a".repeat(64))
+            .unwrap();
+        assert!(ready.context_confirmed);
+        assert!(m
+            .confirm_creation_context(reservation.clone(), "b".repeat(64))
+            .is_err());
+        assert_eq!(m.status(id).unwrap()["generation"], 0);
+        assert!(!f.root.join("commands").exists());
+        let persisted: Value = serde_json::from_slice(
+            &fs::read(f.root.join("worlds").join(id).join("world.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(persisted["admission"]["external_head"].is_null());
+        drop(m);
+        let mut m = f.manager();
+        assert!(
+            m.resolve_creation(&request.destination)
+                .unwrap()
+                .context_confirmed
+        );
+        m.start(id).unwrap();
+        let k = key(&admit(&mut m, self::request(id, 1, 1, "first", None)));
+        assert_eq!(finished(&mut m, &k)["state"], "frozen");
+    }
+}
+
+#[test]
+fn failed_creation_context_ack_retains_candidate_and_blocks_start() {
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let request = fresh_creation(&m);
+    let reservation = m.reserve_creation(request.clone()).unwrap();
+    let block = f
+        .root
+        .join("worlds")
+        .join(&reservation.world_id)
+        .join("world.json.tmp");
+    fs::create_dir(&block).unwrap();
+    assert!(m
+        .confirm_creation_context(reservation.clone(), "a".repeat(64))
+        .is_err());
+    assert!(m
+        .confirm_creation_context(reservation.clone(), "b".repeat(64))
+        .is_err());
+    assert!(m.start_async(&reservation.world_id).is_err());
+    let pending = m.resolve_creation(&request.destination).unwrap();
+    assert_eq!(pending.context_id, Some("a".repeat(64)));
+    assert!(!pending.context_confirmed);
+    drop(m);
+    fs::remove_dir(block).unwrap();
+    let mut m = f.manager();
+    let pending = m.resolve_creation(&request.destination).unwrap();
+    assert_eq!(pending.context_id, Some("a".repeat(64)));
+    assert!(!pending.context_confirmed);
+    assert!(m.start_async(&reservation.world_id).is_err());
+    assert!(m
+        .confirm_creation_context(reservation.clone(), "b".repeat(64))
+        .is_err());
+    assert!(
+        m.confirm_creation_context(reservation, "a".repeat(64))
+            .unwrap()
+            .context_confirmed
+    );
+}
+
+#[test]
+fn live_owner_rejects_missing_reservations_before_allocating_another_world() {
+    for legacy in [false, true] {
+        for whole_catalog in [false, true] {
+            let f = Fixture::new();
+            let mut m = f.manager();
+            let mut fresh = fresh_creation(&m);
+            let mut fork = fork_request(&mut m, &f);
+            fork.destination = json!({"world":fresh.destination.world,"run":fresh.destination.run});
+            if legacy {
+                m.reserve_fork(fork.clone()).unwrap();
+            } else {
+                m.reserve_creation(fresh.clone()).unwrap();
+            }
+            let count = inventory(&mut m)["worlds"].as_array().unwrap().len();
+            let catalog = f.root.join("worlds/forks");
+            if whole_catalog {
+                fs::rename(&catalog, f.root.join("retained-forks")).unwrap();
+            } else {
+                let path = fs::read_dir(&catalog)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().path())
+                    .find(|path| path.extension().and_then(|x| x.to_str()) == Some("json"))
+                    .unwrap();
+                fs::remove_file(path).unwrap();
+            }
+            fresh.request_key = "replacement-fresh".into();
+            fork.request_key = "replacement-fork".into();
+            assert!(m.lookup_creation(&fresh.destination).is_err());
+            assert!(m.reserve_creation(fresh).is_err());
+            assert!(m.reserve_fork(fork).is_err());
+            assert_eq!(inventory(&mut m)["worlds"].as_array().unwrap().len(), count);
+            if whole_catalog {
+                assert!(!catalog.exists());
+            } else {
+                assert!(fs::read_dir(catalog).unwrap().all(|entry| {
+                    entry.unwrap().path().extension().and_then(|x| x.to_str()) != Some("json")
+                }));
+            }
+        }
+    }
+}
+
+#[test]
+fn ready_creation_requires_retained_exact_context_candidate() {
+    for remove in [false, true] {
+        let f = Fixture::new();
+        let mut m = f.manager();
+        let request = fresh_creation(&m);
+        let reservation = m.reserve_creation(request.clone()).unwrap();
+        m.confirm_creation_context(reservation, "a".repeat(64))
+            .unwrap();
+        let path = fs::read_dir(f.root.join("worlds/forks"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.extension().and_then(|x| x.to_str()) == Some("context"))
+            .unwrap();
+        if remove {
+            fs::remove_file(path).unwrap();
+        } else {
+            let mut value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            value["context_id"] = json!("b".repeat(64));
+            fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+        }
+        assert!(m.resolve_creation(&request.destination).is_err());
+        drop(m);
+        assert!(WorldManager::new(
+            f.root.join("registry"),
+            f.root.join("worlds"),
+            f.root.join("build.py")
+        )
+        .is_err());
+    }
+}
+
+#[test]
+fn materialized_logical_world_cannot_be_recreated_after_control_loss() {
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let request = fresh_creation(&m);
+    let reservation = m.reserve_creation(request).unwrap();
+    m.confirm_creation_context(reservation.clone(), "a".repeat(64))
+        .unwrap();
+    m.start(&reservation.world_id).unwrap();
+    m.stop(&reservation.world_id).unwrap();
+    drop(m);
+    fs::rename(
+        f.root.join("worlds").join(&reservation.world_id),
+        f.root.join("retained-world"),
+    )
+    .unwrap();
+    assert!(WorldManager::new(
+        f.root.join("registry"),
+        f.root.join("worlds"),
+        f.root.join("build.py")
+    )
+    .is_err());
+}
+
+#[test]
+fn logical_fork_shares_occupancy_and_separates_context_from_lineage_readiness() {
+    use ddlog_runtime::worlds::{CreationRequest, LogicalDestination};
+    let f = Fixture::new();
+    let mut m = f.manager();
+    let source = fork_request(&mut m, &f);
+    let request = CreationRequest {
+        request_key: source.request_key.clone(),
+        destination: LogicalDestination {
+            resource: "child".into(),
+            world: "child".into(),
+            run: "one".into(),
+        },
+        definition: source.definition.clone(),
+        binding: json!({"components":["echo"]}),
+        fork: Some(Box::new(source.clone())),
+    };
+    let reservation = m.reserve_creation(request.clone()).unwrap();
+    let resolved = m.resolve_creation(&request.destination).unwrap();
+    let fork = resolved.fork.unwrap();
+    assert!(m
+        .restore_fork_async(fork.clone(), 0, source.checkpoint_bytes.clone())
+        .is_err());
+    let mut fresh = request.clone();
+    fresh.request_key = "fresh-collision".into();
+    fresh.fork = None;
+    assert!(m.reserve_creation(fresh).is_err());
+    let mut legacy = source.clone();
+    legacy.request_key = "legacy-collision".into();
+    assert!(m.reserve_fork(legacy).is_err());
+    let persisted: Value = serde_json::from_slice(
+        &fs::read(
+            f.root
+                .join("worlds")
+                .join(&reservation.world_id)
+                .join("world.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(persisted["admission"]["external_head"].is_null());
+    m.confirm_creation_context(reservation.clone(), "a".repeat(64))
+        .unwrap();
+    assert!(m.start_async(&reservation.world_id).is_err());
+    m.restore_fork_async(fork.clone(), 0, source.checkpoint_bytes)
+        .unwrap();
+    let status = await_fork(&mut m, &reservation.world_id);
+    let input = self::request(
+        &reservation.world_id,
+        1,
+        status["revision"].as_u64().unwrap(),
+        "child-input",
+        Some(&source.published.receipt_sha256),
+    );
+    assert!(m
+        .admit_boundary_async(serde_json::from_value(input.clone()).unwrap())
+        .is_err());
+    m.confirm_fork_lineage(fork.clone(), fork.lineage_sha256().unwrap())
+        .unwrap();
+    let k = key(&admit(&mut m, input));
+    assert_eq!(finished(&mut m, &k)["state"], "frozen");
+    drop(m);
+    let mut m = f.manager();
+    let recovered = m.resolve_creation(&request.destination).unwrap();
+    assert_eq!(recovered.reservation, reservation);
+    assert!(recovered.context_confirmed);
+}
 fn digest(value: &Value) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(serde_json::to_vec(value).unwrap()))

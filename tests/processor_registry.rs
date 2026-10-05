@@ -1,8 +1,9 @@
 #![cfg(unix)]
 
 use ddlog_runtime::registry::{
-    GitProvenance, ProcessorDefinition, ProcessorReference, ProcessorRegistry, ProcessorStatus,
-    ProgramDefinition, RegisteredOperationBinding,
+    GitProvenance, LogicalProgramFault, LogicalProgramRequest, ProcessorDefinition,
+    ProcessorReference, ProcessorRegistry, ProcessorStatus, ProgramDefinition,
+    RegisteredOperationBinding,
 };
 use serde_json::json;
 use std::fs;
@@ -45,6 +46,267 @@ fn definition() -> ProcessorDefinition {
         interface: None,
         operators: Vec::new(),
     })
+}
+
+#[test]
+fn logical_version_import_retains_authority_without_inventing_preparation() {
+    let source = TestDirectory::new();
+    let source = source.registry();
+    let request = LogicalProgramRequest {
+        resource: "imported".into(),
+        request_key: "imported-one".into(),
+        description: String::new(),
+        definition: definition(),
+        git_provenance: None,
+        lowering_version: 2,
+    };
+    let published = source.publish_logical_program(request.clone()).unwrap();
+    let record = source
+        .get(
+            &published.processor.processor_id,
+            Some(&published.processor.version),
+        )
+        .unwrap();
+    let target = TestDirectory::new();
+    let registry = target.registry();
+    registry.import_version(record.clone()).unwrap();
+    registry.import_version(record.clone()).unwrap();
+    assert_eq!(
+        registry
+            .get(&record.processor_id, Some(&record.version))
+            .unwrap(),
+        record
+    );
+    let mut unrelated = request;
+    unrelated.resource = "unrelated".into();
+    unrelated.request_key = "unrelated-one".into();
+    assert!(registry.publish_logical_program(unrelated).is_err());
+    assert!(!target.0.join("registry/logical").exists());
+    let ordinary = registry.create(definition(), None).unwrap();
+    assert!(serde_json::to_value(ordinary)
+        .unwrap()
+        .get("logical_binding")
+        .is_none());
+}
+
+#[test]
+fn logical_program_cannot_reallocate_when_published_version_loses_logical_facts() {
+    for fault in [
+        LogicalProgramFault::AfterVersion,
+        LogicalProgramFault::AfterPointer,
+        LogicalProgramFault::AfterPublication,
+    ] {
+        for cold in [false, true] {
+            let directory = TestDirectory::new();
+            let mut registry = directory.registry();
+            let request = LogicalProgramRequest {
+                resource: "retained".into(),
+                request_key: "retain-one".into(),
+                description: String::new(),
+                definition: definition(),
+                git_provenance: None,
+                lowering_version: 2,
+            };
+            assert!(registry
+                .publish_logical_program_with_fault(request.clone(), fault)
+                .is_err());
+            let reserved = registry.resolve_logical_program("retained").unwrap();
+            fs::rename(
+                directory.0.join("registry/logical"),
+                directory.0.join("lost-logical"),
+            )
+            .unwrap();
+            if cold {
+                drop(registry);
+                registry = directory.registry();
+            }
+            for variant in 0..3 {
+                let mut retry = request.clone();
+                match variant {
+                    0 => (),
+                    1 => retry.request_key = "another-key".into(),
+                    _ => retry.resource = "another-resource".into(),
+                }
+                assert!(registry.publish_logical_program(retry).is_err());
+            }
+            assert!(!directory.0.join("registry/logical").exists());
+            assert_eq!(
+                registry
+                    .get(
+                        &reserved.processor.processor_id,
+                        Some(&reserved.processor.version)
+                    )
+                    .unwrap()
+                    .version,
+                reserved.processor.version
+            );
+            assert_eq!(
+                fs::read_dir(directory.0.join("registry")).unwrap().count(),
+                1
+            );
+        }
+    }
+}
+
+#[test]
+fn logical_program_reconciles_an_archived_pin_without_reactivating_it() {
+    let directory = TestDirectory::new();
+    let registry = directory.registry();
+    let request = LogicalProgramRequest {
+        resource: "archived".into(),
+        request_key: "archive_creation".into(),
+        description: String::new(),
+        definition: definition(),
+        git_provenance: None,
+        lowering_version: 2,
+    };
+    assert!(registry
+        .publish_logical_program_with_fault(request.clone(), LogicalProgramFault::AfterPointer)
+        .is_err());
+    let reserved = registry.resolve_logical_program("archived").unwrap();
+    let mut next = definition();
+    program(&mut next).rules.push('\n');
+    let advanced = registry
+        .publish(
+            &reserved.processor.processor_id,
+            next,
+            &reserved.processor.version,
+            None,
+        )
+        .unwrap();
+    registry
+        .archive(&reserved.processor.processor_id, &advanced.version, 0)
+        .unwrap();
+    drop(registry);
+    let registry = directory.registry();
+    let published = registry.publish_logical_program(request).unwrap();
+    assert_eq!(published.processor, reserved.processor);
+    assert_eq!(published.phase, "published");
+    assert!(registry
+        .ensure_active(&published.processor.processor_id)
+        .is_err());
+    let current: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            directory
+                .0
+                .join("registry")
+                .join(&published.processor.processor_id)
+                .join("current.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(current["version"], advanced.version);
+}
+
+#[test]
+fn logical_program_rejects_unreadable_pretty_preparation_before_effects() {
+    let directory = TestDirectory::new();
+    let registry = directory.registry();
+    let mut large = definition();
+    for index in 0..12000 {
+        program(&mut large).schemas.as_object_mut().unwrap().insert(
+            format!("r{index:05}"),
+            json!({"input":true,"fields":["string"]}),
+        );
+    }
+    let request = LogicalProgramRequest {
+        resource: "large".into(),
+        request_key: "large_creation".into(),
+        description: String::new(),
+        definition: large,
+        git_provenance: None,
+        lowering_version: 2,
+    };
+    assert!(serde_json::to_vec(&request).unwrap().len() < 1024 * 1024);
+    let error = registry.publish_logical_program(request).unwrap_err();
+    assert!(error.contains("preparation exceeds limit"), "{error}");
+    assert!(!directory.0.join("registry/logical").exists());
+    assert_eq!(
+        fs::read_dir(directory.0.join("registry")).unwrap().count(),
+        0
+    );
+}
+
+#[test]
+fn logical_program_recovers_each_publication_phase_without_moving_current() {
+    for fault in [
+        LogicalProgramFault::AfterPreparation,
+        LogicalProgramFault::AfterVersion,
+        LogicalProgramFault::AfterPointer,
+        LogicalProgramFault::AfterPublication,
+    ] {
+        let directory = TestDirectory::new();
+        let registry = directory.registry();
+        let request = LogicalProgramRequest {
+            resource: "visibility".into(),
+            request_key: "one".into(),
+            description: "Exact immutable logical program".into(),
+            definition: definition(),
+            git_provenance: None,
+            lowering_version: 2,
+        };
+        assert!(registry
+            .publish_logical_program_with_fault(request.clone(), fault)
+            .is_err());
+        let initial = registry.resolve_logical_program("visibility").unwrap();
+        assert_eq!(
+            initial.phase,
+            if matches!(fault, LogicalProgramFault::AfterPublication) {
+                "published"
+            } else {
+                "prepared"
+            }
+        );
+        drop(registry);
+        let registry = directory.registry();
+        let published = registry.publish_logical_program(request.clone()).unwrap();
+        assert_eq!(published.phase, "published");
+        assert_eq!(published.processor, initial.processor);
+        assert_eq!(
+            registry.publish_logical_program(request.clone()).unwrap(),
+            published
+        );
+        let mut changed = request.clone();
+        changed.description = "changed".into();
+        assert!(registry.publish_logical_program(changed).is_err());
+        let mut another_key = request.clone();
+        another_key.request_key = "two".into();
+        assert!(registry.publish_logical_program(another_key).is_err());
+        let mut another_destination = request.clone();
+        another_destination.resource = "other".into();
+        assert!(registry
+            .publish_logical_program(another_destination)
+            .is_err());
+        let mut next = definition();
+        program(&mut next).rules = "visible(X) :- item(X).\n".into();
+        let advanced = registry
+            .publish(
+                &published.processor.processor_id,
+                next,
+                &published.processor.version,
+                None,
+            )
+            .unwrap();
+        assert_ne!(advanced.version, published.processor.version);
+        assert_eq!(
+            registry.publish_logical_program(request).unwrap(),
+            published
+        );
+        assert_eq!(
+            registry.get(&advanced.processor_id, None).unwrap().version,
+            advanced.version
+        );
+        // Losing preparation beneath a published root must not allocate a new pin.
+        let logical = directory.0.join("registry/logical");
+        for entry in fs::read_dir(&logical).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                fs::remove_file(path).unwrap();
+            }
+        }
+        assert!(registry.resolve_logical_program("visibility").is_err());
+    }
 }
 fn program(definition: &mut ProcessorDefinition) -> &mut ProgramDefinition {
     match definition {
