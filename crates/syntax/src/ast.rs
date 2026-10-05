@@ -78,6 +78,7 @@ impl std::error::Error for ParseError {}
 enum Tok {
     Ident(String),
     Int(i64),
+    Float(f64),
     Str(String),
     Punct(&'static str), // :- , ( ) . ! < =< >= > \= : _
 }
@@ -122,11 +123,33 @@ fn tokenize_spanned(src: &str) -> Result<TokenSpans, ParseError> {
             while i < n && b[i].is_ascii_digit() {
                 i += 1;
             }
+            let mut floating = false;
+            if i + 1 < n && b[i] == '.' && b[i + 1].is_ascii_digit() {
+                floating = true;
+                i += 1;
+                while i < n && b[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            if i < n && matches!(b[i], 'e' | 'E') {
+                floating = true;
+                i += 1;
+                if i < n && matches!(b[i], '+' | '-') {
+                    i += 1;
+                }
+                while i < n && b[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
             let s: String = b[start..i].iter().collect();
-            toks.push(Tok::Int(
-                s.parse()
-                    .map_err(|_| ParseError(format!("bad integer {s}")))?,
-            ));
+            toks.push(if floating {
+                Tok::Float(crate::parse_float(&s).map_err(ParseError)?)
+            } else {
+                Tok::Int(
+                    s.parse()
+                        .map_err(|_| ParseError(format!("bad integer {s}")))?,
+                )
+            });
         } else if c.is_alphabetic() || c == '_' {
             let start = i;
             while i < n && (b[i].is_alphanumeric() || b[i] == '_') {
@@ -315,9 +338,12 @@ impl Parser {
         }
         // otherwise it must be a relational atom: term was an Ident (predicate)
         match t1 {
-            Term::Var(_) | Term::Wildcard | Term::Int(_) | Term::Agg(..) => {
-                Err(ParseError(format!("expected atom, got term {t1:?}")))
-            }
+            Term::Var(_)
+            | Term::Wildcard
+            | Term::Int(_)
+            | Term::Bool(_)
+            | Term::Float(_)
+            | Term::Agg(..) => Err(ParseError(format!("expected atom, got term {t1:?}"))),
             Term::Sym(pred) => {
                 let args = self.args()?;
                 Ok(Lit::Pos(Atom { pred, args }))
@@ -357,6 +383,8 @@ impl Parser {
                 self.pos += 1;
                 if s == "_" {
                     Ok(Term::Wildcard)
+                } else if matches!(s.as_str(), "true" | "false") && !self.is_punct("(") {
+                    Ok(Term::Bool(s == "true"))
                 } else if s
                     .chars()
                     .next()
@@ -386,6 +414,10 @@ impl Parser {
             Some(Tok::Int(i)) => {
                 self.pos += 1;
                 Ok(Term::Int(i))
+            }
+            Some(Tok::Float(value)) => {
+                self.pos += 1;
+                Ok(Term::Float(value))
             }
             Some(Tok::Str(s)) => {
                 self.pos += 1;

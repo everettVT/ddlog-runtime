@@ -9,6 +9,38 @@ fn request(id: &str, generation: u64, revision: u64, key: &str) -> Value {
     json!({"id":id,"expected_generation":generation,"expected_revision":revision,"admission_key":key,
         "changes":[{"op":"insert","predicate":"source","values":[revision,"private input"]}]})
 }
+
+#[test]
+fn opposite_zero_same_key_replays_without_another_commit_after_reopen() {
+    let f = Fixture::new();
+    let mut manager = f.manager();
+    let def = typed_definition(&manager);
+    let id = manager.create(def).unwrap();
+    manager.start(&id).unwrap();
+    let mut claim = request(&id, 1, 1, "zero");
+    claim["changes"][0]["values"] = json!([1, false, -0.0]);
+    let first = admit(&mut manager, claim.clone());
+    assert_eq!(first["state"], "durable");
+    let commits = fs::read_to_string(f.root.join("commands")).unwrap();
+    claim["changes"][0]["values"][2] = json!(0.0);
+    let retry = admit(&mut manager, claim.clone());
+    assert_eq!(retry["receipt"], first["receipt"]);
+    assert_eq!(retry["replayed"], true);
+    assert_eq!(
+        fs::read_to_string(f.root.join("commands")).unwrap(),
+        commits
+    );
+    manager.stop(&id).unwrap();
+    drop(manager);
+    let mut manager = f.manager();
+    let retry = admit(&mut manager, claim);
+    assert_eq!(retry["receipt"], first["receipt"]);
+    assert_eq!(retry["replayed"], true);
+    assert_eq!(
+        fs::read_to_string(f.root.join("commands")).unwrap(),
+        commits
+    );
+}
 fn read(
     manager: &mut WorldManager,
     id: &str,

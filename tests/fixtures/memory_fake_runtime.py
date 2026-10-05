@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 control = Path(__CONTROL__)
 source = Path(__file__).with_name("program.dl").read_text()
@@ -21,11 +22,19 @@ for raw in sys.stdin:
     elif command.startswith(("insert R_", "delete R_")):
         match = re.fullmatch(r"(insert|delete) R_(\w+)\((.*)\);", command)
         operation, name, args = match.groups()
+        # Preserve quoted strings; convert native Double literals for this
+        # transport fixture's JSON-backed set representation.
+        args = re.sub(r'"(?:[^"\\]|\\.)*"|64\'f([0-9.eE+\-]+)',
+                      lambda m: m.group(1) if m.group(1) else m.group(0), args)
         value = json.dumps(json.loads("[" + args + "]"), ensure_ascii=False)
         relation = staged.setdefault(name, set())
         (relation.add if operation == "insert" else relation.discard)(value)
     elif command.startswith("commit"):
         facts = staged
+        if (control / f"hold_commit_{os.getpid()}").exists():
+            (control / f"commit_held_{os.getpid()}").touch()
+            while (control / f"hold_commit_{os.getpid()}").exists():
+                time.sleep(0.005)
         if (control / "die_on_commit").exists():
             os._exit(42)
         if (control / "fail_replay").exists() and command == "commit;":
@@ -39,6 +48,8 @@ for raw in sys.stdin:
             print("unexpected native output", flush=True)
         elif (control / "oversized_query").exists():
             print('R_' + name + '{.f0 = 1, .f1 = "' + "x" * (4 * 1024 * 1024) + '"}', flush=True)
+        elif (control / "nonfinite_query").exists():
+            print('R_' + name + '{.f0 = 1, .f1 = true, .f2 = NaN}', flush=True)
         else:
             for row in sorted(facts.get("unused" if name == "unrelated" else "source", set())):
                 values = json.loads(row)[:arity[name]]

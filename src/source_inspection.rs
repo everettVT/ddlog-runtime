@@ -22,6 +22,12 @@ pub enum Argument {
     Integer {
         value: i64,
     },
+    Boolean {
+        value: bool,
+    },
+    Float64 {
+        value: f64,
+    },
     Wildcard,
     Unsupported {
         source: String,
@@ -76,6 +82,8 @@ fn argument(term: &Term, types: &BTreeMap<String, String>) -> Argument {
             value: value.clone(),
         },
         Term::Int(value) => Argument::Integer { value: *value },
+        Term::Bool(value) => Argument::Boolean { value: *value },
+        Term::Float(value) => Argument::Float64 { value: *value },
         Term::Wildcard => Argument::Wildcard,
         Term::Agg(..) => Argument::Unsupported {
             source: term.render(),
@@ -118,7 +126,8 @@ pub fn inspect_program(program: &ProgramDefinition) -> Value {
     let mut dependencies = Vec::new();
     let mut graph: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (index, spanned) in clauses.iter().enumerate() {
-        let clause = &spanned.clause;
+        let resolved = crate::lower::resolve_legacy_symbols(&spanned.clause, &schemas);
+        let clause = &resolved;
         let mut types = BTreeMap::new();
         // Project positional types from declared positive matches. Admission above is
         // authoritative; this map is not another type checker.

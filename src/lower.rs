@@ -79,11 +79,25 @@ pub(super) fn string_literal(s: &str) -> Result<String, String> {
     }
     serde_json::to_string(s).map_err(|e| e.to_string())
 }
+pub(super) fn native_type(field: &str) -> Result<&'static str, String> {
+    match field {
+        "int" => Ok("signed<64>"),
+        "string" => Ok("string"),
+        "bool" => Ok("bool"),
+        "double" => Ok("double"),
+        _ => Err("Only int, string, bool and finite double fields are supported".into()),
+    }
+}
 fn term(t: &Term) -> Result<String, String> {
     match t {
         Term::Var(v) if ident(v) => Ok(format!("v_{v}")),
         Term::Sym(s) => string_literal(s),
         Term::Int(i) => Ok(i.to_string()),
+        Term::Bool(value) => Ok(value.to_string()),
+        Term::Float(value) => {
+            let text = lemmalog_syntax::float_text(value.abs())?;
+            Ok(format!("{}64'f{text}", if *value < 0.0 { "-" } else { "" }))
+        }
         Term::Wildcard => Ok("_".into()),
         _ => Err("Unsupported term (aggregates are not supported)".into()),
     }
@@ -143,6 +157,8 @@ fn check(
             }
             Term::Int(_) if kind == "int" => {}
             Term::Sym(_) if kind == "string" => {}
+            Term::Bool(_) if kind == "bool" => {}
+            Term::Float(value) if kind == "double" && value.is_finite() => {}
             Term::Wildcard if !matches!(position, AtomPosition::Head) => {}
             _ => {
                 return Err(format!(
@@ -154,6 +170,76 @@ fn check(
     }
     Ok(())
 }
+/// Resolve legacy unquoted string literals through the same declared types
+/// for lowering and source inspection. This does not validate the program.
+pub(crate) fn resolve_legacy_symbols(
+    authored: &Clause,
+    schemas: &BTreeMap<String, Schema>,
+) -> Clause {
+    // Before Bool existed, these unquoted symbols were string constants.
+    // Resolve them through the declared relation type so immutable string
+    // programs retain their meaning while bool fields get native literals.
+    let mut c = authored.clone();
+    let resolve = |a: &mut Atom| {
+        if let Some(schema) = schemas.get(&a.pred) {
+            for (value, kind) in a.args.iter_mut().zip(&schema.fields) {
+                if kind == "string" {
+                    if let Term::Bool(boolean) = value {
+                        *value = Term::Sym(boolean.to_string());
+                    }
+                }
+            }
+        }
+    };
+    resolve(&mut c.head);
+    for literal in &mut c.body {
+        if let Lit::Pos(atom) | Lit::Neg(atom) = literal {
+            resolve(atom);
+        }
+    }
+    let mut vars = BTreeMap::new();
+    for literal in &c.body {
+        if let Lit::Pos(atom) = literal {
+            if let Some(schema) = schemas.get(&atom.pred) {
+                for (value, kind) in atom.args.iter().zip(&schema.fields) {
+                    if let Term::Var(name) = value {
+                        vars.insert(name.clone(), kind.clone());
+                    }
+                }
+            }
+        }
+    }
+    for literal in &mut c.body {
+        if let Lit::Cmp(_, left, Expr::T(right)) = literal {
+            let string_term = |value: &Term| {
+                matches!(value, Term::Sym(_))
+                    || matches!(value, Term::Var(name) if vars.get(name).is_some_and(|kind| kind == "string"))
+            };
+            if schemas.values().all(|schema| {
+                schema
+                    .fields
+                    .iter()
+                    .all(|kind| matches!(kind.as_str(), "int" | "string"))
+            }) {
+                for value in [&mut *left, &mut *right] {
+                    if let Term::Bool(boolean) = value {
+                        *value = Term::Sym(boolean.to_string());
+                    }
+                }
+            } else if string_term(left) {
+                if let Term::Bool(value) = right {
+                    *right = Term::Sym(value.to_string());
+                }
+            } else if string_term(right) {
+                if let Term::Bool(value) = left {
+                    *left = Term::Sym(value.to_string());
+                }
+            }
+        }
+    }
+    c
+}
+
 /// Lower typed rules with positive recursion and stratified negation.
 /// Unsupported constructs fail before the installed program is touched.
 pub fn lower(rules: &str, schemas: &BTreeMap<String, Schema>) -> Result<String, String> {
@@ -207,11 +293,7 @@ pub(super) fn lower_clauses(
             .iter()
             .enumerate()
             .map(|(i, t)| {
-                let ty = match t.as_str() {
-                    "int" => "signed<64>",
-                    "string" => "string",
-                    _ => return Err("Only int and string fields are supported".to_string()),
-                };
+                let ty = native_type(t)?;
                 Ok(format!("f{i}: {ty}"))
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -234,7 +316,8 @@ pub(super) fn lower_clauses(
         ]);
         out.push_str(&operator.source(index));
     }
-    for (index, c) in clauses.iter().enumerate() {
+    for (index, authored) in clauses.iter().enumerate() {
+        let c = resolve_legacy_symbols(authored, schemas);
         if c.is_fact {
             return Err("Facts must be submitted through apply_changes".into());
         }
@@ -281,6 +364,8 @@ pub(super) fn lower_clauses(
                     let kind = |t: &Term| match t {
                         Term::Int(_) => Ok("int"),
                         Term::Sym(_) => Ok("string"),
+                        Term::Bool(_) => Ok("bool"),
+                        Term::Float(value) if value.is_finite() => Ok("double"),
                         Term::Var(v) => vars
                             .get(v)
                             .map(String::as_str)
@@ -291,8 +376,10 @@ pub(super) fn lower_clauses(
                         return Err("Comparison type mismatch".into());
                     }
                     // Lemmalog ordering comparisons are numeric; do not introduce string ordering.
-                    if !matches!(op, CmpOp::Eq | CmpOp::Ne) && kind(left)? != "int" {
-                        return Err("Ordering requires integers".into());
+                    if !matches!(op, CmpOp::Eq | CmpOp::Ne)
+                        && !matches!(kind(left)?, "int" | "double")
+                    {
+                        return Err("Ordering requires numeric fields".into());
                     }
                     let op = match op {
                         CmpOp::Lt => "<",
@@ -324,7 +411,7 @@ pub(super) fn lower_clauses(
             .map(|(v, t)| {
                 format!(
                     "v_{v}: {}",
-                    if t == "int" { "signed<64>" } else { "string" }
+                    native_type(t).expect("validated variable type")
                 )
             })
             .collect::<Vec<_>>();

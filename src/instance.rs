@@ -89,6 +89,55 @@ pub(crate) struct ProgramIdentity {
     pub source_sha256: String,
 }
 
+/// External-publication policy validates checkpoint eligibility before activation.
+pub(crate) fn validate_checkpoint_program(
+    registry: &ProcessorRegistry,
+    record: &ProcessorVersion,
+) -> Result<(), String> {
+    let prepared = PreparedProgram::new(registry, record, 2)?;
+    if prepared
+        .source
+        .lines()
+        .any(|line| line.trim_start().starts_with("import "))
+    {
+        return Err("External publication does not support imported native operators".into());
+    }
+    Ok(())
+}
+
+/// Validate before an imported receipt changes hosted admission state.
+pub(crate) fn validate_pinned_checkpoint(
+    registry: &ProcessorRegistry,
+    bytes: &[u8],
+    identity: &ProgramIdentity,
+) -> Result<(), String> {
+    prepare_pinned_checkpoint(registry, bytes, identity).map(|_| ())
+}
+fn prepare_pinned_checkpoint(
+    registry: &ProcessorRegistry,
+    bytes: &[u8],
+    identity: &ProgramIdentity,
+) -> Result<(ProcessorVersion, PreparedProgram), String> {
+    registry.ensure_active(&identity.processor.processor_id)?;
+    let record = registry.get(
+        &identity.processor.processor_id,
+        Some(&identity.processor.version),
+    )?;
+    let prepared = PreparedProgram::new(registry, &record, identity.lowering_version)?;
+    let (_, state) = crate::checkpoint::inspect(bytes)?;
+    if &prepared.identity != identity
+        || state.source != prepared.source
+        || state.schemas != prepared.schemas
+        || state.lowering_version != identity.lowering_version
+    {
+        return Err(
+            "Checkpoint does not match pinned program, dependencies, public interfaces or lowering"
+                .into(),
+        );
+    }
+    Ok((record, prepared))
+}
+
 /// The same lowering and public admission mapping serve install and restore.
 /// Preparing this plan validates pins/dependencies without starting a compiler.
 struct PreparedProgram {
@@ -686,20 +735,7 @@ impl ProgramInstance {
             .registry
             .as_ref()
             .ok_or("Processor registry is not configured")?;
-        registry.ensure_active(&identity.processor.processor_id)?;
-        let record = registry.get(
-            &identity.processor.processor_id,
-            Some(&identity.processor.version),
-        )?;
-        let prepared = PreparedProgram::new(registry, &record, identity.lowering_version)?;
-        let (_, state) = crate::checkpoint::inspect(bytes)?;
-        if &prepared.identity != identity
-            || state.source != prepared.source
-            || state.schemas != prepared.schemas
-            || state.lowering_version != identity.lowering_version
-        {
-            return Err("Checkpoint does not match pinned program, dependencies, public interfaces or lowering".into());
-        }
+        let (record, prepared) = prepare_pinned_checkpoint(registry, bytes, identity)?;
         self.backend.restore_checkpoint_bytes(bytes)?;
         self.interface = prepared.interface;
         self.composition = prepared.composition;

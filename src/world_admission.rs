@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 type Result<T> = std::result::Result<T, String>;
-const MAX_ADMISSIONS: usize = 4096;
+pub(super) const MAX_ADMISSIONS: usize = 4096;
 const MAX_EFFECTS: usize = 1024;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub struct AdmitInputs {
     #[serde(default)]
     pub effect: Option<EffectRequest>,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmissionQuery {
     pub id: String,
@@ -75,35 +75,51 @@ pub(super) type Effects = BTreeMap<String, Effect>;
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct AdmissionState {
-    records: BTreeMap<String, Record>,
+    pub(super) records: BTreeMap<String, Record>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) external_pending: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) external_head: Option<String>,
     pub effects: Effects,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Record {
-    generation: u64,
-    admission_key: String,
-    request_sha256: String,
-    effect: Option<EffectRequest>,
-    state: String,
-    applied_revision: Option<u64>,
-    receipt: Option<Value>,
-    error: Option<String>,
-    publication: String,
-    at_unix_ms: u128,
+pub(super) struct Record {
+    pub(super) generation: u64,
+    pub(super) admission_key: String,
+    pub(super) request_sha256: String,
+    pub(super) effect: Option<EffectRequest>,
+    pub(super) state: String,
+    pub(super) applied_revision: Option<u64>,
+    pub(super) receipt: Option<Value>,
+    pub(super) error: Option<String>,
+    pub(super) publication: String,
+    pub(super) at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) boundary: Option<super::boundary::BoundaryRecord>,
 }
 impl Record {
-    fn result(&self, id: &str, replayed: bool, authority: bool) -> Value {
-        json!({"schema_version":1,"id":id,"generation":self.generation,"admission_key":self.admission_key,
+    pub(super) fn result(&self, id: &str, replayed: bool, authority: bool) -> Value {
+        let mut result = json!({"schema_version":1,"id":id,"generation":self.generation,"admission_key":self.admission_key,
             "state":self.state,"applied_revision":self.applied_revision,"receipt":self.receipt,"error":self.error,
             "publication":self.publication,"replayed":replayed,
-            "effect_authorized":authority && !replayed && self.state=="durable" && self.effect.as_ref().is_some_and(|e|e.phase=="reserve")})
+            "effect_authorized":authority && !replayed && self.state=="durable" && self.effect.as_ref().is_some_and(|e|e.phase=="reserve")});
+        if let Some(boundary) = &self.boundary {
+            result["boundary"] = json!({"key":boundary.key(id, self),
+                "manifest":boundary.manifest,"external_receipt":boundary.external_receipt});
+        }
+        result
     }
 }
-fn record_key(generation: u64, key: &str) -> String {
+pub(super) fn record_key(generation: u64, key: &str) -> String {
     format!("{generation}/{key}")
 }
-fn fence(world: &World, generation: u64, revision: u64, worker_id: Option<&str>) -> Result<()> {
+pub(super) fn fence(
+    world: &World,
+    generation: u64,
+    revision: u64,
+    worker_id: Option<&str>,
+) -> Result<()> {
     if world.state != "running" || world.pending.is_some() || world.generation != generation {
         return Err("Expected running generation mismatch; request not applied".into());
     }
@@ -211,7 +227,7 @@ pub(super) fn validate_effects(value: Option<&Value>) -> Result<Effects> {
 }
 pub(super) fn recover(world: &mut World) {
     for record in world.admission.records.values_mut() {
-        if matches!(record.state.as_str(), "pending" | "applied") {
+        if record.boundary.is_none() && matches!(record.state.as_str(), "pending" | "applied") {
             record.state = "uncertain".into();
             record.error =
                 Some("Owner exited before a durable admission outcome was recorded".into());
@@ -263,6 +279,7 @@ impl WorldManager {
         Ok(result)
     }
     pub fn admission_status(&mut self, request: AdmissionQuery) -> Result<Value> {
+        self.poll_boundary(&request.id)?;
         let world = self.worlds.get(&request.id).ok_or("Unknown world")?;
         let record = world
             .admission
@@ -271,16 +288,9 @@ impl WorldManager {
             .ok_or("Unknown admission")?;
         Ok(record.result(&request.id, true, false))
     }
-    pub fn admit_inputs(&mut self, request: AdmitInputs) -> Result<Value> {
-        workers::token(&request.admission_key)?;
-        if request.changes.len() > 1000
-            || serde_json::to_vec(&request)
-                .map_err(|e| e.to_string())?
-                .len()
-                > 256 * 1024
-        {
-            return Err("Admission exceeds 1000 changes or 256 KiB".into());
-        }
+    pub fn admit_inputs(&mut self, mut request: AdmitInputs) -> Result<Value> {
+        normalize_inputs(&mut request);
+        validate_request(&request)?;
         let key = record_key(request.expected_generation, &request.admission_key);
         let hash = workers::digest(&request)?;
         let world = self.worlds.get(&request.id).ok_or("Unknown world")?;
@@ -304,29 +314,14 @@ impl WorldManager {
             error: None,
             publication: "not_attempted".into(),
             at_unix_ms: timestamp(),
+            boundary: None,
         };
         let prepared = (|| {
             self.ensure_starting_allowed()?;
             self.status_with(&request.id, true)?;
             let world = self.worlds.get(&request.id).ok_or("Unknown world")?;
-            fence(
-                world,
-                request.expected_generation,
-                request.expected_revision,
-                request.worker_id.as_deref(),
-            )?;
-            if world.admission.records.len() >= MAX_ADMISSIONS {
-                return Err("World admission retention limit reached".into());
-            }
-            validate_effect(world, &request)?;
-            let instance = world.instance.as_ref().unwrap();
-            // Reject unsupported checkpoint programs before a mutation. The
-            // later publication still has an independent failure outcome.
-            instance.checkpoint_identity()?;
-            instance.backend.checkpoint_bytes(Value::Null)?;
-            instance.prepare_admission_changes(
-                &serde_json::to_value(&request.changes).map_err(|e| e.to_string())?,
-            )
+            super::boundary::require_ordinary(world)?;
+            prepare_inputs(world, &request)
         })();
         let changes = match prepared {
             Ok(c) => c,
@@ -421,4 +416,47 @@ impl WorldManager {
         }
         Ok(record.result(&request.id, false, authority))
     }
+}
+
+pub(super) fn normalize_inputs(request: &mut AdmitInputs) {
+    for change in &mut request.changes {
+        for value in &mut change.values {
+            crate::cells::normalize(value);
+        }
+    }
+}
+
+pub(super) fn validate_request(request: &AdmitInputs) -> Result<()> {
+    workers::token(&request.admission_key)?;
+    if request.changes.len() > 1000
+        || serde_json::to_vec(&request)
+            .map_err(|e| e.to_string())?
+            .len()
+            > 256 * 1024
+    {
+        return Err("Admission exceeds 1000 changes or 256 KiB".into());
+    }
+    Ok(())
+}
+
+/// Shared public-port/type/checkpoint preflight; performs no native exchange.
+pub(super) fn prepare_inputs(world: &World, request: &AdmitInputs) -> Result<Value> {
+    fence(
+        world,
+        request.expected_generation,
+        request.expected_revision,
+        request.worker_id.as_deref(),
+    )?;
+    if world.admission.records.len() >= MAX_ADMISSIONS {
+        return Err("World admission retention limit reached".into());
+    }
+    validate_effect(world, request)?;
+    let instance = world.instance.as_ref().unwrap();
+    // Reject unsupported checkpoint programs before a mutation. The
+    // later publication still has an independent failure outcome.
+    instance.checkpoint_identity()?;
+    instance.backend.checkpoint_bytes(Value::Null)?;
+    instance.prepare_admission_changes(
+        &serde_json::to_value(&request.changes).map_err(|e| e.to_string())?,
+    )
 }

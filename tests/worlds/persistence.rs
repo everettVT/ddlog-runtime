@@ -56,6 +56,7 @@ fn published_boundary_survives_restart_and_restore_is_explicit() {
             processor_id: record.processor_id,
             version: record.version,
         },
+        external_publication: None,
         purpose: "instance".into(),
         scenarios: vec![],
     };
@@ -276,6 +277,7 @@ fn composition_restore_retains_public_mapping_exact_dependencies_and_admission()
                 processor_id: record.processor_id,
                 version: record.version,
             },
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })
@@ -500,6 +502,7 @@ fn old_world_records_default_to_empty_persistence_and_unsupported_imports_fail_e
                 processor_id: star.processor_id,
                 version: star.version,
             },
+            external_publication: None,
             purpose: "instance".into(),
             scenarios: vec![],
         })

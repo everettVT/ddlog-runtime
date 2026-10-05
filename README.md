@@ -11,7 +11,7 @@ The original Lemmalog agent-memory product remains in its own repository. This r
 | Optional `mcp` feature | Existing stdio server and shared Unix host/bridges |
 | Optional Python worker | External inference through the existing claim/complete protocol |
 
-The source language accepts positive recursion, safe stratified negation, joins, projections and comparisons over explicitly declared `int` and `string` fields. Negated variables must be bound by positive atoms. Negative cycles and cycles through native transformers are rejected before compilation. A vetted Large-Star/Small-Star operator performs native iterative connected components. Aggregates, arithmetic, clock builtins and inline facts remain unsupported even though the shared parser recognizes them.
+The source language accepts positive recursion, safe stratified negation, joins, projections and comparisons over explicitly declared `int`, `string`, `bool` and finite `double` fields. Negated variables must be bound by positive atoms. Negative cycles and cycles through native transformers are rejected before compilation. A vetted Large-Star/Small-Star operator performs native iterative connected components. Aggregates, arithmetic, clock builtins and inline facts remain unsupported even though the shared parser recognizes them.
 
 ## Library
 

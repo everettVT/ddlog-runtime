@@ -6,6 +6,9 @@ owner-private directories. An exclusive advisory lock rejects another manager fo
 the same build root. Clients attach to the existing owner; constructing another
 manager is not discovery. Different stores can deliberately own different worlds.
 
+Trusted embedders can use the [logical creation ports](logical-creation.md) to
+reserve and resolve stable program/world names through these same owners.
+
 The stdio protocol is newline-delimited JSON, capped at 1 MiB per request.
 Requests have `operation` and `args`; replies have `ok` and either `result` or
 `error`. There is no network listener, arbitrary host-process discovery, or daemon
@@ -263,3 +266,14 @@ extraction/integration slice can migrate independent applications onto registrat
 and their own supported APIs without merging their repositories or claiming those
 services are already managed. X0 and Holocron provenance registration alone does
 not instantiate their programs or imply integration coverage.
+
+## Opt-in external analytical publication
+
+The Rust embedding API can create a world with `external_publication` policy and
+use asynchronous boundary admission, frozen blob reads, exact confirmation and
+bound checkpoint import. It uses this existing owner and shutdown control. Legacy
+mutations reject for these worlds even between cuts; ordinary worlds retain their
+existing behavior. See [the external publication contract](external-publication.md).
+New transport verbs and application-specific analytical storage are outside that
+local library port. Rust `WorldDefinition` literals require the new optional field;
+old serialized definitions omit it and continue to deserialize.

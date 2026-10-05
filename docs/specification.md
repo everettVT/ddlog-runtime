@@ -7,8 +7,9 @@ wire shapes and operational prerequisites.
 
 | Boundary | Required behavior | Executable evidence |
 | --- | --- | --- |
-| Language | Explicit `int`/`string` schemas; positive recursion and safe stratified negation; reject unsupported constructs and negative cycles before compilation | `tests/ddlog_lowering.rs`, `tests/recursive_lowering.rs` |
+| Language | Explicit `int`/`string`/`bool`/finite `double` schemas; positive recursion and safe stratified negation; reject unsupported constructs and negative cycles before compilation | `tests/ddlog_lowering.rs`, `tests/recursive_lowering.rs` |
 | Definitions | Immutable versions preserve identity and lineage; conditional pointer and lifecycle updates reject stale callers | `tests/processor_registry.rs` |
+| Logical creation (trusted Rust ports) | Registry publication retains exact pins; one manager catalog reserves fresh/fork destinations and requires durable context confirmation before activation | `tests/processor_registry.rs`, `tests/worlds/boundary.rs`, [logical creation](logical-creation.md) |
 | Composition | Resolve exact versions, isolate private names, validate bindings, and preserve public interfaces through nesting | `tests/processor_composition_registry.rs` |
 | Activation | Compile a candidate before replacement; compatible retained inputs replay; failed replacement preserves the prior usable program | `tests/memory_runtime.rs` |
 | Input changes | Validate the complete input transaction before execution; acknowledged state changes only after completion; uncertain native failure disables continued use | `tests/memory_runtime.rs` |
@@ -18,6 +19,7 @@ wire shapes and operational prerequisites.
 | Checkpoints | Explicit pure-backend checkpoint; integrity-checked restore into a fresh backend; reconstruct outputs from acknowledged inputs | `tests/memory_runtime.rs`, [checkpoint contract](checkpoints.md) |
 | Managed persistence | Durable exact JSON receipts; explicit asynchronous fresh-generation restore with pinned public admission and hosted cancellation | `tests/worlds/persistence.rs`, `tests/worlds_stdio.rs`, opt-in `tests/worlds_native.rs`, [managed contract](managed-checkpoints.md) |
 | Managed workers and admission | Startup-only exact-pin profiles; owned bounded children; revision-fenced read batches and durable input admission; generic effect reservation/settlement with no replay authority | `tests/worlds/admission.rs`, `tests/worlds/workers.rs`, fake and opt-in native `tests/workers_socket.rs`, [worker contract](managed-workers.md) |
+| External publication (opt-in Rust port) | Retained admission barrier, asynchronous complete output/checkpoint freeze, exact external acknowledgement and bound import; no input replay or competing owner | `tests/worlds/boundary.rs`, opt-in `tests/worlds_native.rs`, [external publication](external-publication.md) |
 | Compatibility | Preserve previously published definition hashes, native source fixtures, and MCP tool schemas unless a deliberate compatibility change is declared | `tests/upstream_compatibility.rs` |
 
 ## What an acknowledgment establishes
